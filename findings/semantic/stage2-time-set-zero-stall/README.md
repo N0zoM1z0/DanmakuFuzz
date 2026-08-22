@@ -8,11 +8,11 @@ This finding comes from the TH06 semantic lane. A `time-set-zero` mutation on
 - headless trace freezes around frame `1226`;
 - `stage_vm.loaded` flips false while `ecl_timeline.time` stays pinned near the
   same value;
-- the minimized local payload currently lives under ignored artifacts, but this
-  finding does not depend on that blob being present.
+- the exact minimized payload is now tracked as a compact
+  `payload_patch.json`, so the finding no longer depends on ignored artifacts.
 
-Use the local baseline corpus to rebuild the triggering payload and rerun the
-case:
+Use the local baseline corpus plus the tracked patch to rebuild the exact
+triggering payload and rerun the case:
 
 ```sh
 PYTHONPATH=src python3 findings/semantic/stage2-time-set-zero-stall/reproduce.py
@@ -31,6 +31,8 @@ Current local evidence:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-boss-sweep-smoke/ecldata2/0004-time-set-zero-s24-i0012/result.json`
 - minimized summary:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-minimized/0004-time-set-zero-s24-i0012/summary.json`
+- tracked exact payload patch:
+  `findings/semantic/stage2-time-set-zero-stall/payload_patch.json`
 - retail probe report:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-retail-run-stage2-time-set-staticprobe/report.json`
 

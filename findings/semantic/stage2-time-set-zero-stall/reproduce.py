@@ -6,28 +6,22 @@ from pathlib import Path
 import subprocess
 import sys
 
+from danmakufuzz.findings.payload_patch import apply_payload_patch, load_payload_patch
 from danmakufuzz.headless.baseline import DEFAULT_GAME_DIR, default_headless_binary, run_baseline
 from danmakufuzz.interestingness.rules import score_trace
 from danmakufuzz.repo import ARTIFACTS_DIR, REFERENCE_DIR, ensure_directory
-from danmakufuzz.semantic.ecl_campaign import LONG_ACTION_FILE, select_mutants
+from danmakufuzz.semantic.ecl_campaign import LONG_ACTION_FILE
 
 
-TARGET_MUTANT_NAME = "time-set-zero"
-TARGET_MUTANT_PATH = (24, 12)
+FINDING_DIR = Path(__file__).resolve().parent
+TARGET_PATCH = FINDING_DIR / "payload_patch.json"
 TARGET_SEED = REFERENCE_DIR / "corpus" / "ecl" / "original" / "ecldata2.ecl"
 
 
-def _target_mutant() -> bytes:
+def _target_payload() -> tuple[bytes, dict[str, object]]:
     seed_payload = TARGET_SEED.read_bytes()
-    mutants = select_mutants(
-        seed_payload,
-        include_structural=False,
-        name_filters=["time-set-"],
-    )
-    for mutant in mutants:
-        if mutant.name == TARGET_MUTANT_NAME and mutant.path == TARGET_MUTANT_PATH:
-            return mutant.payload
-    raise RuntimeError(f"missing target mutant {TARGET_MUTANT_NAME} at {TARGET_MUTANT_PATH}")
+    patch = load_payload_patch(TARGET_PATCH)
+    return apply_payload_patch(seed_payload, patch), patch
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,12 +42,14 @@ def main() -> int:
     args = parse_args()
     if not TARGET_SEED.is_file():
         raise FileNotFoundError(f"missing seed corpus entry: {TARGET_SEED}")
+    if not TARGET_PATCH.is_file():
+        raise FileNotFoundError(f"missing payload patch: {TARGET_PATCH}")
 
     artifact_dir = args.artifact_dir.resolve()
     ensure_directory(artifact_dir)
     override_dir = artifact_dir / "override"
     ensure_directory(override_dir / "data")
-    payload = _target_mutant()
+    payload, patch = _target_payload()
     payload_path = override_dir / "data" / TARGET_SEED.name
     payload_path.write_bytes(payload)
 
@@ -79,6 +75,8 @@ def main() -> int:
     summary: dict[str, object] = {
         "finding": "semantic/stage2-time-set-zero-stall",
         "seed_ecl": str(TARGET_SEED.resolve()),
+        "payload_patch": str(TARGET_PATCH.resolve()),
+        "payload_sha256": patch["target_sha256"],
         "payload_path": str(payload_path.resolve()),
         "headless": {
             "artifact_dir": str(headless_dir.resolve()),
@@ -94,7 +92,7 @@ def main() -> int:
             json.dumps(
                 {
                     "case_name": "finding-stage2-time-set-zero-stall",
-                    "mutant_name": TARGET_MUTANT_NAME,
+                    "mutant_name": "tracked-payload-patch",
                     "seed_name": TARGET_SEED.name,
                     "override_dir": str(override_dir.resolve()),
                 },

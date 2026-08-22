@@ -16,6 +16,11 @@ Rebuild and re-evaluate the payload from the local retail archive with:
 PYTHONPATH=src python3 findings/parser/pbg3-first-entry-checksum-zero/reproduce.py
 ```
 
+This finding stays recipe-backed instead of tracking an exact mutated archive
+blob or archive patch in Git: the deterministic mutation is small and stable,
+while a byte-exact patch against the rebuilt archive would be close to a whole
+archive replacement.
+
 Current local evidence:
 
 - campaign summary:
