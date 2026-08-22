@@ -6,10 +6,11 @@ from pathlib import Path
 import subprocess
 
 from .actions import parse_actions_file
-from ..repo import ARTIFACTS_DIR, CONFIG_DIR, THIRD_PARTY_DIR, ensure_directory
+from ..repo import ARTIFACTS_DIR, CONFIG_DIR, REFERENCE_DIR, THIRD_PARTY_DIR, ensure_directory
 
 
 DEFAULT_ACTION_FILE = CONFIG_DIR / "headless_baseline_actions.txt"
+DEFAULT_GAME_DIR = REFERENCE_DIR / "retail" / "game" / "th06"
 
 
 def default_headless_binary() -> Path:
@@ -113,7 +114,7 @@ def run_baseline(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a deterministic TH06 headless baseline trace.")
     parser.add_argument("--headless-bin", type=Path, default=default_headless_binary())
-    parser.add_argument("--game-dir", type=Path, required=True)
+    parser.add_argument("--game-dir", type=Path, default=DEFAULT_GAME_DIR)
     parser.add_argument("--stage", type=int, default=6)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--actions", type=Path, default=DEFAULT_ACTION_FILE)
@@ -122,7 +123,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--character", type=int, default=0)
     parser.add_argument("--shot-type", type=int, default=0)
     parser.add_argument("--max-ticks", type=int, default=600)
-    parser.add_argument("--auto-shoot", action="store_true", default=True)
+    parser.add_argument("--auto-shoot", dest="auto_shoot", action="store_true")
+    parser.add_argument("--no-auto-shoot", dest="auto_shoot", action="store_false")
+    parser.set_defaults(auto_shoot=True)
     parser.add_argument("--continue-after-hit", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()

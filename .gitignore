@@ -17,3 +17,4 @@ third_party/th06-headless/.vs/
 *.log
 *.jsonl
 *.tmp
+*.rar
