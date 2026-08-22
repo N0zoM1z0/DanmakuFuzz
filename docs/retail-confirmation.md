@@ -17,11 +17,13 @@ Retail state must stay isolated:
 
 ## Current runner
 
-`danmakufuzz.retail.confirm_case` currently does three things:
+`danmakufuzz.retail.confirm_case` currently does four things:
 
 - copies an owned TH06 tree into an isolated artifact-local `game/`;
+- normalizes the TH06 cfg to `32-bit + windowed` so Xvfb/Wine can reach the title screen;
+- restores the local full-unlock `score.dat` when one is present under `全开档/`;
 - rebuilds the stage DAT archive with one replacement `ecldata*.ecl` payload;
-- initializes a dedicated Wine prefix and optionally launches the retail exe.
+- initializes a dedicated Wine prefix and can either stop at launch or drive Practice mode.
 
 Supported inputs:
 
@@ -45,29 +47,43 @@ PYTHONPATH=src python3 -m danmakufuzz.retail.confirm_case \
   --timeout-seconds 3
 ```
 
+Example isolated Practice Stage 6 confirmation:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.retail.confirm_case \
+  --result artifacts/semantic/fullstage6-stage6-seed7-ecldata6/0004-bullet-count1-zero-s01-i0003/result.json \
+  --practice-stage 6 \
+  --difficulty 3 \
+  --timeout-seconds 20
+```
+
 Each run writes an isolated artifact directory containing:
 
 - `game/` with patched retail archives;
 - `prefix/` with its Wine state;
-- `wineboot.log` and `wine.log`;
+- `wineboot.log`, `wine.log`, and `xvfb.log` when live stage control runs;
+- `control-*.png` screenshots when Practice automation runs;
 - `report.json` with payload hash, patched archive hash, and launch result.
 
 ## Current limitation
 
-This is still a launch-only retail handoff.
-
-TH06 loads stage ECL when a stage starts, not at process startup. So this
-runner proves:
+TH06 loads stage ECL when a stage starts, not at process startup. The current
+runner now proves all of these for Reimu A Practice:
 
 - archive rebuilding works;
 - isolation works;
-- Wine can launch the original executable under the prepared environment.
+- Wine can launch the original executable under the prepared environment;
+- deterministic keyboard automation can enter Practice Stage 1--6;
+- patched `ecldata6.ecl` can be carried all the way to Final Stage entry.
 
-It does not yet prove:
+It still does not prove:
 
-- that the patched ECL was reached by retail runtime;
-- that a headless finding reproduces inside a real stage;
-- that a minimized case reaches the same VM/opcode path in retail.
+- generic route automation from Start through Ending;
+- memory-backed retail state sensing or robust crash classification;
+- that every interesting case reproduces the same VM/opcode path as headless.
 
-The next missing piece is a small retail control path for deterministic menu
-navigation into Practice or a direct stage-start hook.
+The remaining missing pieces are:
+
+- route-play automation;
+- tighter oracles than screenshot/process-liveness;
+- automatic replay of minimized interesting cases instead of one-off manual runs.

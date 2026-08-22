@@ -46,3 +46,13 @@ PYTHONPATH=src python3 -m danmakufuzz.retail.confirm_case \
   --prepare-only \
   --dry-run
 ```
+
+Drive one Stage 6 semantic case into retail Practice Lunatic / Reimu A with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.retail.confirm_case \
+  --result artifacts/semantic/fullstage6-stage6-seed7-ecldata6/0004-bullet-count1-zero-s01-i0003/result.json \
+  --practice-stage 6 \
+  --difficulty 3 \
+  --timeout-seconds 20
+```
