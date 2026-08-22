@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+import struct
+
+from .model import EclFile, RawInstruction
+
+
+OP_JUMP = 2
+OP_JUMPDEC = 3
+OP_CALL = 35
+OP_BULLETFANAIMED = 67
+OP_BULLETRANDOM = 75
+OP_LASERROTATE = 88
+OP_LASERROTATEFROMPLAYER = 89
+OP_LASEROFFSET = 90
+OP_LASERTEST = 91
+OP_LASERCANCEL = 92
+OP_SPELLCARDSTART = 93
+OP_ANMSETSLOT = 99
+OP_ENEMYINTERRUPTSET = 109
+OP_EXINSCALL = 122
+OP_BOSSSETLIFECOUNT = 125
+OP_ANMINTERRUPTSLOT = 127
+
+
+@dataclass(frozen=True)
+class Mutant:
+    name: str
+    path: tuple[int, int]
+    ecl: EclFile
+
+
+def _replace_i16(buffer: bytes, offset: int, value: int) -> bytes:
+    mutable = bytearray(buffer)
+    mutable[offset:offset + 2] = int(value).to_bytes(2, "little", signed=True)
+    return bytes(mutable)
+
+
+def _replace_i32(buffer: bytes, offset: int, value: int) -> bytes:
+    mutable = bytearray(buffer)
+    mutable[offset:offset + 4] = int(value).to_bytes(4, "little", signed=True)
+    return bytes(mutable)
+
+
+def _replace_string(buffer: bytes, offset: int, data: bytes) -> bytes:
+    mutable = bytearray(buffer)
+    mutable[offset:offset + len(data)] = data
+    return bytes(mutable)
+
+
+def _clone_with_mutated_instruction(
+    ecl: EclFile,
+    sub_index: int,
+    instruction_index: int,
+    instruction: RawInstruction,
+) -> EclFile:
+    clone = ecl.clone()
+    clone.subs[sub_index].instructions[instruction_index] = instruction
+    return clone
+
+
+def generate_targeted_mutants(ecl: EclFile) -> list[Mutant]:
+    mutants: list[Mutant] = []
+    sub_count = len(ecl.subs)
+    for sub_index, subroutine in enumerate(ecl.subs):
+        for instruction_index, instruction in enumerate(subroutine.instructions):
+            key = (sub_index, instruction_index)
+            if instruction.opcode in {OP_JUMP, OP_JUMPDEC} and len(instruction.args) >= 8:
+                mutants.append(Mutant("jump-offset-zero", key, _clone_with_mutated_instruction(
+                    ecl, sub_index, instruction_index,
+                    RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 4, 0)})
+                )))
+                mutants.append(Mutant("jump-offset-negative-12", key, _clone_with_mutated_instruction(
+                    ecl, sub_index, instruction_index,
+                    RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 4, -12)})
+                )))
+                mutants.append(Mutant("jump-offset-large-forward", key, _clone_with_mutated_instruction(
+                    ecl, sub_index, instruction_index,
+                    RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 4, 0x7FFF)})
+                )))
+            if instruction.opcode == OP_CALL and len(instruction.args) >= 4:
+                for name, value in (
+                    ("call-sub-negative-one", -1),
+                    ("call-sub-past-end", sub_count),
+                    ("call-sub-max-i32", 0x7FFFFFFF),
+                ):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
+                    )))
+            if instruction.opcode == OP_ANMSETSLOT and len(instruction.args) >= 4:
+                for name, value in (("anm-slot-8", 8), ("anm-slot-255", 255)):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
+                    )))
+            if instruction.opcode in {OP_LASERROTATE, OP_LASERROTATEFROMPLAYER, OP_LASEROFFSET, OP_LASERTEST, OP_LASERCANCEL} and len(instruction.args) >= 4:
+                for name, value in (("laser-index-32", 32), ("laser-index-255", 255)):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
+                    )))
+            if instruction.opcode == OP_ENEMYINTERRUPTSET and len(instruction.args) >= 8:
+                for name, value in (("interrupt-id-8", 8), ("interrupt-id-255", 255)):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 4, value)})
+                    )))
+            if instruction.opcode == OP_EXINSCALL and len(instruction.args) >= 4:
+                for name, value in (("exinscall-17", 17), ("exinscall-255", 255)):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
+                    )))
+            if instruction.opcode == OP_SPELLCARDSTART and len(instruction.args) >= 4:
+                mutants.append(Mutant("spellcard-id-64", key, _clone_with_mutated_instruction(
+                    ecl, sub_index, instruction_index,
+                    RawInstruction(**{**instruction.__dict__, "args": _replace_i16(instruction.args, 2, 64)})
+                )))
+                long_name = b"A" * 80
+                new_args = _replace_string(instruction.args, 4, long_name)
+                mutants.append(Mutant("spellcard-name-80-bytes", key, _clone_with_mutated_instruction(
+                    ecl, sub_index, instruction_index,
+                    RawInstruction(**{**instruction.__dict__, "offset_to_next": 12 + len(new_args), "args": new_args})
+                )))
+            if OP_BULLETFANAIMED <= instruction.opcode <= OP_BULLETRANDOM and len(instruction.args) >= 12:
+                for name, offset, value in (
+                    ("bullet-count1-zero", 4, 0),
+                    ("bullet-count2-zero", 8, 0),
+                    ("bullet-count1-negative-one", 4, -1),
+                    ("bullet-sprite-16", 0, 16),
+                ):
+                    mutate = _replace_i32 if offset in {4, 8} else _replace_i16
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": mutate(instruction.args, offset, value)})
+                    )))
+            if instruction.opcode == OP_ANMINTERRUPTSLOT and len(instruction.args) >= 4:
+                mutants.append(Mutant("anm-interrupt-slot-255", key, _clone_with_mutated_instruction(
+                    ecl, sub_index, instruction_index,
+                    RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, 255)})
+                )))
+            if instruction.opcode == OP_BOSSSETLIFECOUNT and len(instruction.args) >= 4:
+                mutants.append(Mutant("boss-life-count-negative-one", key, _clone_with_mutated_instruction(
+                    ecl, sub_index, instruction_index,
+                    RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, -1)})
+                )))
+    deduped: list[Mutant] = []
+    seen: set[tuple[str, tuple[int, int]]] = set()
+    for mutant in mutants:
+        dedupe_key = (mutant.name, mutant.path)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        deduped.append(mutant)
+    return deduped
