@@ -28,6 +28,8 @@ Retail state must stay isolated:
 `danmakufuzz.retail.batch_confirm` is the thin batch wrapper around that single-case runner.
 It discovers `result.json` / `summary.json` inputs, runs them sequentially in isolated
 artifact-local workers, and emits a batch-level `summary.json` plus `results.jsonl`.
+It can also reorder the replay queue by headless interestingness / finding severity,
+filter by finding kind, and cap duplicate replays per finding.
 
 Supported inputs:
 
@@ -72,6 +74,17 @@ PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
   --stop-on-classification crash-dialog
 ```
 
+Example queue preview that keeps only interesting minimized cases and picks at most one
+sample per primary headless finding:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
+  --from-minimized \
+  --interesting-only \
+  --max-per-finding 1 \
+  --list-only
+```
+
 Each run writes an isolated artifact directory containing:
 
 - `game/` with patched retail archives;
@@ -85,7 +98,7 @@ The batch wrapper writes a parent artifact directory containing:
 
 - one child artifact directory per case;
 - `results.jsonl` with one summary row per replayed case;
-- `summary.json` with aggregated classification counts and per-case locations.
+- `summary.json` with aggregated classification counts, queue metadata, and per-case locations.
 
 ## Current limitation
 

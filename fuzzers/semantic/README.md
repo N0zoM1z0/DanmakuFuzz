@@ -57,6 +57,16 @@ PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
   --timeout-seconds 20
 ```
 
+Preview a prioritized replay queue without launching Wine with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
+  --from-minimized \
+  --interesting-only \
+  --max-per-finding 1 \
+  --list-only
+```
+
 Drive one Stage 6 semantic case into retail Practice Lunatic / Reimu A with:
 
 ```sh

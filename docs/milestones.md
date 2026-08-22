@@ -32,5 +32,6 @@ Wine prefix, normalize the retail cfg for Xvfb, restore the local full-unlock
 window-census evidence and auto-classifies at least `crash-dialog` versus
 `game-window-live`. A thin batch wrapper can now replay multiple semantic or
 minimized cases through the same retail path and aggregate classifications into
-`results.jsonl` / `summary.json`. Milestone 7 remains open until the retail
+`results.jsonl` / `summary.json`, with queue shaping such as interesting-only
+filtering and one-sample-per-finding prioritization. Milestone 7 remains open until the retail
 oracle grows beyond the current window/dialog layer.
