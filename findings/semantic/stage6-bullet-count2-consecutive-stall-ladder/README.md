@@ -52,6 +52,8 @@ Current local evidence:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-site-basins/stage6-bullet-count2-s04-i0003-a/summary.json`
 - focused consecutive-value scan:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-site-basins/stage6-bullet-count2-s04-i0003-b/summary.json`
+- August 22, 2026 retail smoke for the `bullet-count2=8` representative:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-bullet-count2-consecutive-stall-ladder/retail/report.json`
 - related Stage 6 `bullet-count2` item-flood basin on a different site:
   `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage6-bullet-count2-item-flood-basin/README.md`
 
@@ -71,6 +73,8 @@ Current interpretation:
 - nearby values `4`, `5`, `12`, and `14` still keep the baseline scheduler
   state, so this site mixes normal drift and hard wedges inside a narrow local
   interval;
-- retail: not rerun yet from this exact finding directory, but the reproducer
-  is ready to drive the `bullet-count2=8` representative through Practice
-  Stage 6.
+- retail: on August 22, 2026, the `bullet-count2=8` smoke reached a live game
+  window under Wine, changed `149340 / 786432` pixels during the progress
+  probe (`0.1898956298828125`), and did not produce a Wine crash signature;
+- that retail result is still only a launch/progress smoke, not proof that the
+  exact headless stall wedge also manifests in retail.
