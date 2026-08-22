@@ -22,11 +22,19 @@ Under headless replay, those four payloads collapse into one identical trace:
 - all four runs end with `stage_vm.loaded=False`,
   `stage_vm.script_time=1212`, and `ecl_timeline.next_time=1214`.
 
-One exact-value probe on August 22, 2026 found that this site is broader than a
-single basin: at least `11` tested values converge on the shared `1212` trace,
-while nearby values such as `3`, `5`, `8`, `16`, `32`, `64`, `127`, `255`, and
-`1024` fall into neighboring wedges with their own frozen script times. This
-directory tracks only the shared `1212` basin.
+Follow-up exact-value mapping on August 22, 2026 showed that this site is
+broader than one strict replay-equivalent basin:
+
+- at least `11` tested values converge on the shared `1212` trace recorded in
+  this directory;
+- additional nearby values such as `5` and `8` still land in the same
+  `game_frame=1212` / `script_time=1212` scheduler wedge, but with different
+  strict traces and different resource tails;
+- other values such as `3`, `16`, `32`, `127`, `255`, and `1024` fall into
+  neighboring wedges with their own frozen script times.
+
+This directory intentionally tracks only the strict shared-trace subgroup, not
+every value that reaches the broader `1212` scheduler wedge.
 
 Rebuild the four triggering payloads from the local baseline corpus and rerun
 the shared-wedge check with:
@@ -58,6 +66,8 @@ Current local evidence:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-bullet-count2-explore-a/ecldata2/0009-bullet-count2-sampled-neg12208722-s02-i0009/result.json`
 - exact-value basin probe:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-stage2-bullet-count2-basin-probe-a/probe-summary.json`
+- standardized site-basin mapper summary:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-site-basins/stage2-bullet-count2-s02-i0009-a/summary.json`
 
 Why this one matters:
 

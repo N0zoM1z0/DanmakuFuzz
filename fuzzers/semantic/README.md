@@ -126,6 +126,38 @@ This is useful when multiple different mutations collapse into one weird late
 state and you want to prove they first diverge at the same tick / field instead
 of hand-reading traces one by one.
 
+Map one exact i32 ECL site across a hand-picked value set with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.site_basin_mapper \
+  --seed-ecl reference/corpus/ecl/original/ecldata2.ecl \
+  --stage 2 \
+  --sub-index 2 \
+  --instruction-index 9 \
+  --field-offset 8 \
+  --family bullet-count2 \
+  --field-name bullet_count2 \
+  --expected-opcode 69 \
+  --expected-original-value 2 \
+  --value 1 \
+  --value 0 \
+  --value -12208722 \
+  --value 2147483596 \
+  --value 3 \
+  --value 5
+```
+
+This mapper keeps one deterministic baseline trace, rebuilds exact payloads for
+one site, and then groups the outcomes in two ways:
+
+- strict `trace_sha256` groups when you want exact replay-equivalent basins;
+- broader `scheduler_signature` groups when multiple traces still collapse into
+  the same frozen script/timeline state.
+
+Use it when one hotspot looks more like a fractured value landscape than a
+single reproducible finding and you want to decide which basin is worth
+promoting into `findings/semantic/`.
+
 When a case only reproduces under the original loose-resource override path,
 `semantic.minimize_case` now falls back automatically and records the selected
 `reproduction_mode` in `summary.json` and `history.jsonl`.
