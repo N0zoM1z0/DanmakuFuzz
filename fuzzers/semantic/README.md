@@ -59,6 +59,10 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.batch_minimize \
 This wrapper skips cluster representatives that already have a minimized summary
 and only runs `semantic.minimize_case` on the missing handoff candidates.
 
+When a case only reproduces under the original loose-resource override path,
+`semantic.minimize_case` now falls back automatically and records the selected
+`reproduction_mode` in `summary.json` and `history.jsonl`.
+
 Prepare or launch an isolated retail confirmation worker from either a
 semantic case or a minimized case with:
 

@@ -45,6 +45,16 @@ class CandidateResult:
         return bool(self.findings)
 
 
+def _override_dir_from_case_result(case_result: dict[str, object], result_path: Path) -> Path:
+    override_dir = case_result.get("override_dir")
+    if not isinstance(override_dir, str):
+        raise ValueError(f"result.json is missing override_dir: {result_path}")
+    resolved = Path(override_dir).resolve()
+    if not resolved.is_dir():
+        raise FileNotFoundError(f"missing override directory for case: {resolved}")
+    return resolved
+
+
 def _replace_trace_path(command: list[str], trace_path: Path) -> list[str]:
     updated = list(command)
     if "--trace" not in updated:
@@ -55,11 +65,11 @@ def _replace_trace_path(command: list[str], trace_path: Path) -> list[str]:
 
 
 def _payload_path_from_case_result(case_result: dict[str, object], result_path: Path) -> Path:
-    override_dir = case_result.get("override_dir")
+    override_dir = _override_dir_from_case_result(case_result, result_path)
     seed_name = case_result.get("seed_name")
-    if not isinstance(override_dir, str) or not isinstance(seed_name, str):
-        raise ValueError(f"result.json is missing override_dir/seed_name: {result_path}")
-    payload_path = Path(override_dir) / "data" / seed_name
+    if not isinstance(seed_name, str):
+        raise ValueError(f"result.json is missing seed_name: {result_path}")
+    payload_path = override_dir / "data" / seed_name
     if not payload_path.is_file():
         raise FileNotFoundError(f"missing payload file for case: {payload_path}")
     return payload_path
@@ -99,55 +109,68 @@ def evaluate_payload(
     work_dir: Path,
     timeout_seconds: float,
     baseline_trace: Path | None = None,
+    override_dir: Path | None = None,
+    restore_original_payload: bool = False,
 ) -> CandidateResult:
     ensure_directory(work_dir)
-    override_dir = work_dir / "override"
-    ensure_directory(override_dir / "data")
-    payload_path = override_dir / "data" / seed_name
+    active_override_dir = override_dir.resolve() if override_dir is not None else (work_dir / "override").resolve()
+    ensure_directory(active_override_dir / "data")
+    payload_path = active_override_dir / "data" / seed_name
+    original_payload: bytes | None = None
+    had_original_payload = payload_path.exists()
+    if restore_original_payload and had_original_payload:
+        original_payload = payload_path.read_bytes()
     payload_path.write_bytes(payload)
 
     trace_path = work_dir / "trace.jsonl"
     log_path = work_dir / "run.log"
     command = _replace_trace_path(command_template, trace_path)
     run_env = os.environ.copy()
-    run_env["DANMAKUFUZZ_OVERRIDE_DIR"] = str(override_dir.resolve())
+    run_env["DANMAKUFUZZ_OVERRIDE_DIR"] = str(active_override_dir)
 
     started_at = time.time()
     returncode: int | None = None
     timed_out = False
-    with log_path.open("w", encoding="utf-8") as log_handle:
-        try:
-            completed = subprocess.run(
-                command,
-                cwd=game_dir,
-                env=run_env,
-                stdout=log_handle,
-                stderr=subprocess.STDOUT,
-                timeout=timeout_seconds,
-                check=False,
-            )
-            returncode = completed.returncode
-        except subprocess.TimeoutExpired:
-            timed_out = True
-    elapsed_seconds = time.time() - started_at
+    try:
+        with log_path.open("w", encoding="utf-8") as log_handle:
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=game_dir,
+                    env=run_env,
+                    stdout=log_handle,
+                    stderr=subprocess.STDOUT,
+                    timeout=timeout_seconds,
+                    check=False,
+                )
+                returncode = completed.returncode
+            except subprocess.TimeoutExpired:
+                timed_out = True
+        elapsed_seconds = time.time() - started_at
 
-    findings = classify_process_result(returncode, timed_out=timed_out)
-    if trace_path.exists() and trace_path.stat().st_size > 0:
-        findings.extend(score_trace(trace_path))
-        if baseline_trace is not None and baseline_trace.is_file():
-            findings.extend(score_trace_differential(trace_path, baseline_trace))
-    elif not findings:
-        findings.append(Finding("empty-trace", "headless run finished without a non-empty trace"))
+        findings = classify_process_result(returncode, timed_out=timed_out)
+        if trace_path.exists() and trace_path.stat().st_size > 0:
+            findings.extend(score_trace(trace_path))
+            if baseline_trace is not None and baseline_trace.is_file():
+                findings.extend(score_trace_differential(trace_path, baseline_trace))
+        elif not findings:
+            findings.append(Finding("empty-trace", "headless run finished without a non-empty trace"))
 
-    return CandidateResult(
-        returncode=returncode,
-        timed_out=timed_out,
-        elapsed_seconds=elapsed_seconds,
-        findings=tuple(findings),
-        trace_path=trace_path,
-        log_path=log_path,
-        override_dir=override_dir,
-    )
+        return CandidateResult(
+            returncode=returncode,
+            timed_out=timed_out,
+            elapsed_seconds=elapsed_seconds,
+            findings=tuple(findings),
+            trace_path=trace_path,
+            log_path=log_path,
+            override_dir=active_override_dir,
+        )
+    finally:
+        if restore_original_payload:
+            if original_payload is not None:
+                payload_path.write_bytes(original_payload)
+            elif not had_original_payload and payload_path.exists():
+                payload_path.unlink()
 
 
 def _ddmin_delete(
@@ -272,6 +295,7 @@ def main() -> int:
     if not isinstance(seed_name, str):
         raise ValueError("result.json does not contain seed_name")
     payload_path = _payload_path_from_case_result(case_result, result_path)
+    source_override_dir = _override_dir_from_case_result(case_result, result_path)
     original_payload = payload_path.read_bytes()
     target = _target_from_case_result(case_result, kind=args.match_kind, detail=args.match_detail)
     baseline_trace = _campaign_baseline_trace(result_path)
@@ -282,10 +306,12 @@ def main() -> int:
 
     eval_counter = [0]
     history: list[dict[str, object]] = []
+    active_override_dir: Path | None = None
+    restore_original_payload = False
+    reproduction_mode = "fresh-override"
 
     def predicate(candidate: bytes) -> bool:
-        run_index = eval_counter[0]
-        work_dir = artifact_dir / f"eval-{run_index:04d}"
+        work_dir = artifact_dir / f"eval-{len(history):04d}"
         result = evaluate_payload(
             command_template=command_template,
             game_dir=game_dir,
@@ -294,23 +320,34 @@ def main() -> int:
             work_dir=work_dir,
             timeout_seconds=args.timeout_seconds,
             baseline_trace=baseline_trace,
+            override_dir=active_override_dir,
+            restore_original_payload=restore_original_payload,
         )
         matched = target.matches(list(result.findings))
         history.append(
             {
-                "eval_index": run_index,
+                "eval_index": len(history),
                 "payload_size": len(candidate),
                 "matched": matched,
                 "returncode": result.returncode,
                 "timed_out": result.timed_out,
+                "reproduction_mode": reproduction_mode,
                 "findings": [{"kind": finding.kind, "detail": finding.detail} for finding in result.findings],
                 "work_dir": str(work_dir.resolve()),
+                "override_dir": str(result.override_dir.resolve()),
             }
         )
         return matched
 
     if not predicate(original_payload):
-        raise RuntimeError("original payload does not reproduce the requested target finding")
+        active_override_dir = source_override_dir
+        restore_original_payload = True
+        reproduction_mode = "original-override"
+        if not predicate(original_payload):
+            raise RuntimeError(
+                "original payload does not reproduce the requested target finding "
+                "under either fresh-override or original-override mode"
+            )
 
     minimized = original_payload
     minimized = _ddmin_delete(minimized, predicate, max_evaluations=args.max_evaluations, evaluation_counter=eval_counter)
@@ -318,6 +355,9 @@ def main() -> int:
     minimized = _fine_zero(minimized, predicate, max_evaluations=args.max_evaluations, evaluation_counter=eval_counter)
 
     final_dir = artifact_dir / "final"
+    final_payload_path = (final_dir / "override" / "data" / seed_name).resolve()
+    ensure_directory(final_payload_path.parent)
+    final_payload_path.write_bytes(minimized)
     final_result = evaluate_payload(
         command_template=command_template,
         game_dir=game_dir,
@@ -326,18 +366,21 @@ def main() -> int:
         work_dir=final_dir,
         timeout_seconds=args.timeout_seconds,
         baseline_trace=baseline_trace,
+        override_dir=active_override_dir,
+        restore_original_payload=restore_original_payload,
     )
-    final_payload_path = final_dir / "override" / "data" / seed_name
     summary = {
         "source_result": str(result_path),
         "payload_path": str(payload_path),
         "target": {"kind": target.kind, "detail": target.detail},
+        "reproduction_mode": reproduction_mode,
+        "evaluation_override_dir": str(final_result.override_dir.resolve()),
         "original_size": len(original_payload),
         "minimized_size": len(minimized),
         "history_entries": len(history),
         "reduction_attempts": eval_counter[0],
         "max_reduction_attempts": args.max_evaluations,
-        "final_payload": str(final_payload_path.resolve()),
+        "final_payload": str(final_payload_path),
         "final_trace": str(final_result.trace_path.resolve()),
         "final_log": str(final_result.log_path.resolve()),
         "final_findings": [{"kind": finding.kind, "detail": finding.detail} for finding in final_result.findings],
