@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from ..headless.baseline import DEFAULT_GAME_DIR, default_headless_binary, run_baseline
+from ..interestingness.rules import load_trace_records
 from ..repo import ARTIFACTS_DIR, REFERENCE_DIR, ensure_directory
 from .ecl_campaign import (
     DEFAULT_BOSS_NAME_FILTERS,
@@ -130,6 +131,7 @@ def main() -> int:
         baseline_trace = Path(baseline_trace_value) if isinstance(baseline_trace_value, str) else None
         if baseline_trace is None or not baseline_trace.is_file():
             raise RuntimeError(f"boss sweep baseline trace missing for {seed_ecl}")
+        baseline_records = load_trace_records(baseline_trace)
 
         mutants = select_mutants(
             seed_ecl.read_bytes(),
@@ -168,6 +170,7 @@ def main() -> int:
                     mutant=mutant,
                     case_index=case_index,
                     baseline_trace=baseline_trace,
+                    baseline_records=baseline_records,
                 )
                 seed_totals["cases_run"] += 1
                 seed_totals["interesting_cases"] += int(bool(result["interesting"]))

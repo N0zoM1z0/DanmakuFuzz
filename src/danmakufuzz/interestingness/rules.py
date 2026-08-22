@@ -21,7 +21,7 @@ class StallEvent:
     detail: str
 
 
-def _load_trace_records(path: Path) -> list[dict[str, Any]]:
+def load_trace_records(path: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
         for line in handle:
@@ -170,82 +170,95 @@ def _stall_detail(record: dict[str, Any], *, frame: int, stall_window: int) -> s
     return " ".join(fields)
 
 
-def first_stall_event(path: Path, *, stall_window: int = 240) -> StallEvent | None:
+def first_stall_event_records(records: list[dict[str, Any]], *, stall_window: int = 240) -> StallEvent | None:
     last_frame: int | None = None
     repeated_frames = 0
-    with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            if not line.strip():
-                continue
-            record = json.loads(line)
-            frame = record.get("frame")
-            if not isinstance(frame, int):
-                frame = record.get("game_frame")
-            if not isinstance(frame, int):
-                continue
-            if last_frame == frame:
-                repeated_frames += 1
-            else:
-                repeated_frames = 0
-            last_frame = frame
-            if repeated_frames >= stall_window:
-                tick = record.get("tick")
-                game_frame = record.get("game_frame")
-                return StallEvent(
-                    frame=frame,
-                    tick=tick if isinstance(tick, int) else None,
-                    game_frame=game_frame if isinstance(game_frame, int) else None,
-                    detail=_stall_detail(record, frame=frame, stall_window=stall_window),
-                )
+    for record in records:
+        frame = record.get("frame")
+        if not isinstance(frame, int):
+            frame = record.get("game_frame")
+        if not isinstance(frame, int):
+            continue
+        if last_frame == frame:
+            repeated_frames += 1
+        else:
+            repeated_frames = 0
+        last_frame = frame
+        if repeated_frames >= stall_window:
+            tick = record.get("tick")
+            game_frame = record.get("game_frame")
+            return StallEvent(
+                frame=frame,
+                tick=tick if isinstance(tick, int) else None,
+                game_frame=game_frame if isinstance(game_frame, int) else None,
+                detail=_stall_detail(record, frame=frame, stall_window=stall_window),
+            )
     return None
 
 
-def score_trace(path: Path, *, stall_window: int = 240, bullet_limit: int = 1024, item_limit: int = 256) -> list[Finding]:
+def first_stall_event(path: Path, *, stall_window: int = 240) -> StallEvent | None:
+    return first_stall_event_records(load_trace_records(path), stall_window=stall_window)
+
+
+def score_trace_records(
+    records: list[dict[str, Any]],
+    *,
+    stall_window: int = 240,
+    bullet_limit: int = 1024,
+    item_limit: int = 256,
+) -> list[Finding]:
     findings: list[Finding] = []
-    stall = first_stall_event(path, stall_window=stall_window)
+    stall = first_stall_event_records(records, stall_window=stall_window)
     negative_timeline_next_reported = False
-    with path.open("r", encoding="utf-8") as handle:
-        for line_number, line in enumerate(handle, start=1):
-            record = json.loads(line)
-            _walk_numbers(record, findings)
-            timeline_next_finding = None
-            if not negative_timeline_next_reported:
-                timeline_next_finding = _timeline_next_time_finding(record, line_number=line_number)
-            if timeline_next_finding is not None:
-                findings.append(timeline_next_finding)
-                negative_timeline_next_reported = True
-            bullets = record.get("bullets")
-            if isinstance(bullets, list) and len(bullets) > bullet_limit:
-                findings.append(Finding("bullet-explosion", f"line {line_number} bullet_count={len(bullets)}"))
-            lasers = record.get("lasers")
-            if isinstance(lasers, list) and len(lasers) > bullet_limit:
-                findings.append(Finding("laser-explosion", f"line {line_number} laser_count={len(lasers)}"))
-            enemies = record.get("enemies")
-            if isinstance(enemies, list) and len(enemies) > 512:
-                findings.append(Finding("enemy-explosion", f"line {line_number} enemy_count={len(enemies)}"))
-            items = record.get("items")
-            if isinstance(items, list) and len(items) > item_limit:
-                findings.append(Finding("item-explosion", f"line {line_number} item_count={len(items)}"))
-            terminal_reason = record.get("terminal_reason")
-            if terminal_reason and terminal_reason not in {"physical-hit", "tick-limit", "input-error"}:
-                findings.append(Finding("unexpected-terminal", str(terminal_reason)))
+    for line_number, record in enumerate(records, start=1):
+        _walk_numbers(record, findings)
+        timeline_next_finding = None
+        if not negative_timeline_next_reported:
+            timeline_next_finding = _timeline_next_time_finding(record, line_number=line_number)
+        if timeline_next_finding is not None:
+            findings.append(timeline_next_finding)
+            negative_timeline_next_reported = True
+        bullets = record.get("bullets")
+        if isinstance(bullets, list) and len(bullets) > bullet_limit:
+            findings.append(Finding("bullet-explosion", f"line {line_number} bullet_count={len(bullets)}"))
+        lasers = record.get("lasers")
+        if isinstance(lasers, list) and len(lasers) > bullet_limit:
+            findings.append(Finding("laser-explosion", f"line {line_number} laser_count={len(lasers)}"))
+        enemies = record.get("enemies")
+        if isinstance(enemies, list) and len(enemies) > 512:
+            findings.append(Finding("enemy-explosion", f"line {line_number} enemy_count={len(enemies)}"))
+        items = record.get("items")
+        if isinstance(items, list) and len(items) > item_limit:
+            findings.append(Finding("item-explosion", f"line {line_number} item_count={len(items)}"))
+        terminal_reason = record.get("terminal_reason")
+        if terminal_reason and terminal_reason not in {"physical-hit", "tick-limit", "input-error"}:
+            findings.append(Finding("unexpected-terminal", str(terminal_reason)))
     if stall is not None:
         findings.append(Finding("stalled-progress", stall.detail))
         findings.append(Finding("stalled-frame", f"frame {stall.frame} repeated >= {stall_window} times"))
     return findings
 
 
-def suppress_baseline_stall_findings(
+def score_trace(path: Path, *, stall_window: int = 240, bullet_limit: int = 1024, item_limit: int = 256) -> list[Finding]:
+    return score_trace_records(
+        load_trace_records(path),
+        stall_window=stall_window,
+        bullet_limit=bullet_limit,
+        item_limit=item_limit,
+    )
+
+
+def suppress_baseline_stall_findings_records(
     case_findings: list[Finding],
     *,
-    case_trace: Path,
-    baseline_trace: Path,
+    case_records: list[dict[str, Any]],
+    baseline_records: list[dict[str, Any]],
     stall_window: int = 240,
     earlier_tick_margin: int = 32,
     earlier_frame_margin: int = 32,
 ) -> list[Finding]:
-    baseline_stall = first_stall_event(baseline_trace, stall_window=stall_window)
-    case_stall = first_stall_event(case_trace, stall_window=stall_window)
+    baseline_stall = first_stall_event_records(baseline_records, stall_window=stall_window)
+    case_stall = first_stall_event_records(case_records, stall_window=stall_window)
     if baseline_stall is None or case_stall is None:
         return list(case_findings)
 
@@ -260,9 +273,28 @@ def suppress_baseline_stall_findings(
     return [finding for finding in case_findings if finding.kind not in {"stalled-progress", "stalled-frame"}]
 
 
-def score_trace_differential(
-    path: Path,
-    baseline_path: Path,
+def suppress_baseline_stall_findings(
+    case_findings: list[Finding],
+    *,
+    case_trace: Path,
+    baseline_trace: Path,
+    stall_window: int = 240,
+    earlier_tick_margin: int = 32,
+    earlier_frame_margin: int = 32,
+) -> list[Finding]:
+    return suppress_baseline_stall_findings_records(
+        case_findings,
+        case_records=load_trace_records(case_trace),
+        baseline_records=load_trace_records(baseline_trace),
+        stall_window=stall_window,
+        earlier_tick_margin=earlier_tick_margin,
+        earlier_frame_margin=earlier_frame_margin,
+    )
+
+
+def score_trace_differential_records(
+    case_records: list[dict[str, Any]],
+    baseline_records: list[dict[str, Any]],
     *,
     sustained_window: int = 16,
     bullet_drift_threshold: int = 8,
@@ -274,8 +306,6 @@ def score_trace_differential(
     point_item_drift_threshold: int = 1,
     shortfall_threshold: int = 32,
 ) -> list[Finding]:
-    baseline_records = _load_trace_records(baseline_path)
-    case_records = _load_trace_records(path)
     if not baseline_records or not case_records:
         return []
 
@@ -425,3 +455,32 @@ def score_trace_differential(
             findings.append(Finding("trace-shortfall", f"tick_count={len(case_records)} baseline_tick_count={len(baseline_records)}"))
 
     return findings
+
+
+def score_trace_differential(
+    path: Path,
+    baseline_path: Path,
+    *,
+    sustained_window: int = 16,
+    bullet_drift_threshold: int = 8,
+    enemy_drift_threshold: int = 2,
+    laser_drift_threshold: int = 1,
+    item_drift_threshold: int = 4,
+    score_drift_threshold: int = 100,
+    power_drift_threshold: int = 8,
+    point_item_drift_threshold: int = 1,
+    shortfall_threshold: int = 32,
+) -> list[Finding]:
+    return score_trace_differential_records(
+        load_trace_records(path),
+        load_trace_records(baseline_path),
+        sustained_window=sustained_window,
+        bullet_drift_threshold=bullet_drift_threshold,
+        enemy_drift_threshold=enemy_drift_threshold,
+        laser_drift_threshold=laser_drift_threshold,
+        item_drift_threshold=item_drift_threshold,
+        score_drift_threshold=score_drift_threshold,
+        power_drift_threshold=power_drift_threshold,
+        point_item_drift_threshold=point_item_drift_threshold,
+        shortfall_threshold=shortfall_threshold,
+    )

@@ -11,7 +11,13 @@ import subprocess
 import time
 
 from ..headless.baseline import DEFAULT_ACTION_FILE, DEFAULT_GAME_DIR, build_command, default_headless_binary, run_baseline
-from ..interestingness.rules import Finding, score_trace, score_trace_differential, suppress_baseline_stall_findings
+from ..interestingness.rules import (
+    Finding,
+    load_trace_records,
+    score_trace_differential_records,
+    score_trace_records,
+    suppress_baseline_stall_findings_records,
+)
 from ..repo import ARTIFACTS_DIR, CONFIG_DIR, REFERENCE_DIR, ensure_directory
 from .payload_mutants import PayloadMutant, generate_payload_mutants
 
@@ -261,6 +267,7 @@ def run_case(
     mutant: PayloadMutant,
     case_index: int,
     baseline_trace: Path | None = None,
+    baseline_records: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     case_name = slugify_case_name(mutant, case_index)
     case_dir = campaign_dir / case_name
@@ -306,16 +313,25 @@ def run_case(
 
     findings = classify_process_result(returncode, timed_out=timed_out)
     if trace_path.exists() and trace_path.stat().st_size > 0:
-        trace_findings = score_trace(trace_path)
-        if baseline_trace is not None and baseline_trace.is_file():
-            trace_findings = suppress_baseline_stall_findings(
+        case_records = load_trace_records(trace_path)
+        trace_findings = score_trace_records(case_records)
+        resolved_baseline_records = baseline_records
+        if resolved_baseline_records is None and baseline_trace is not None and baseline_trace.is_file():
+            resolved_baseline_records = load_trace_records(baseline_trace)
+        if resolved_baseline_records is not None:
+            trace_findings = suppress_baseline_stall_findings_records(
                 trace_findings,
-                case_trace=trace_path,
-                baseline_trace=baseline_trace,
+                case_records=case_records,
+                baseline_records=resolved_baseline_records,
             )
         findings.extend(trace_findings)
-        if baseline_trace is not None and baseline_trace.is_file():
-            findings.extend(score_trace_differential(trace_path, baseline_trace))
+        if resolved_baseline_records is not None:
+            findings.extend(
+                score_trace_differential_records(
+                    case_records,
+                    resolved_baseline_records,
+                )
+            )
     elif not findings:
         findings.append(Finding("empty-trace", "headless run finished without a non-empty trace"))
 
@@ -418,6 +434,11 @@ def main() -> int:
     )
     baseline_trace_value = baseline_metadata.get("trace")
     baseline_trace = Path(baseline_trace_value) if isinstance(baseline_trace_value, str) else None
+    baseline_records = (
+        load_trace_records(baseline_trace)
+        if baseline_trace is not None and baseline_trace.is_file()
+        else None
+    )
 
     seed_payload = seed_ecl.read_bytes()
     mutants = select_mutants(
@@ -457,6 +478,7 @@ def main() -> int:
                 mutant=mutant,
                 case_index=case_index,
                 baseline_trace=baseline_trace,
+                baseline_records=baseline_records,
             )
             totals["cases"] += 1
             totals["interesting"] += int(bool(result["interesting"]))
