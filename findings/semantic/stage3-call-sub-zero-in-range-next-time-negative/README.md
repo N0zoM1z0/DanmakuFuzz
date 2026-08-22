@@ -65,6 +65,12 @@ Current local evidence:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/stage3-call-sub-portable-explore-a/summary.json`
 - Stage 3 `call-sub` trace basin summary:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/stage3-call-sub-portable-explore-a/summary.json`
+- broader portable core exploration sweep:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-portable-core-explore-c/summary.json`
+- broader portable core hotspot summary:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/portable-core-explore-c/summary.json`
+- broader portable core trace basin summary:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/portable-core-explore-c/summary.json`
 
 Why this one matters:
 
@@ -93,3 +99,7 @@ Current interpretation:
   divergence is always tick `1347`, the first differing field is always
   `ecl_timeline`, and every case lands in the same sink snapshot with
   `next_time=-9163`.
+- note: the later August 22, 2026 portable core sweep widened that conclusion:
+  the same sink signature also appeared under `bullet-count1` and
+  `shoot-interval` mutations, so this is now better understood as a cross-family
+  Stage 3 basin rather than a `call-sub`-only quirk.
