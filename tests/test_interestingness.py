@@ -1,7 +1,13 @@
 import json
 from pathlib import Path
 
-from danmakufuzz.interestingness.rules import score_trace, score_trace_differential
+from danmakufuzz.interestingness.rules import (
+    Finding,
+    first_stall_event,
+    score_trace,
+    score_trace_differential,
+    suppress_baseline_stall_findings,
+)
 
 
 def test_score_trace_flags_non_finite(tmp_path: Path) -> None:
@@ -45,6 +51,64 @@ def test_score_trace_uses_game_frame_for_stall_detection(tmp_path: Path) -> None
     assert "stage_vm.loaded=False" in progress.detail
     assert "ecl_timeline.time=77" in progress.detail
     assert any(finding.kind == "stalled-frame" for finding in findings)
+
+
+def test_first_stall_event_reports_tick_and_frame(tmp_path: Path) -> None:
+    trace = tmp_path / "trace.jsonl"
+    rows = [
+        {"tick": 10, "game_frame": 5, "bullets": []},
+        {"tick": 11, "game_frame": 5, "bullets": []},
+        {"tick": 12, "game_frame": 5, "bullets": []},
+    ]
+    trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    event = first_stall_event(trace, stall_window=2)
+    assert event is not None
+    assert event.frame == 5
+    assert event.tick == 12
+
+
+def test_suppress_baseline_stall_findings_drops_similar_baseline_stall(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.jsonl"
+    case = tmp_path / "case.jsonl"
+    baseline_rows = [{"tick": tick, "game_frame": 100 if tick >= 50 else tick, "bullets": []} for tick in range(1, 80)]
+    case_rows = [{"tick": tick, "game_frame": 104 if tick >= 54 else tick, "bullets": []} for tick in range(1, 84)]
+    baseline.write_text("\n".join(json.dumps(row) for row in baseline_rows) + "\n", encoding="utf-8")
+    case.write_text("\n".join(json.dumps(row) for row in case_rows) + "\n", encoding="utf-8")
+    filtered = suppress_baseline_stall_findings(
+        [
+            Finding("stalled-progress", "frame=104 ..."),
+            Finding("stalled-frame", "frame 104 repeated >= 8 times"),
+            Finding("score-drift", "tick 60 baseline=100 case=200"),
+        ],
+        case_trace=case,
+        baseline_trace=baseline,
+        stall_window=8,
+        earlier_tick_margin=16,
+        earlier_frame_margin=16,
+    )
+    assert filtered == [Finding("score-drift", "tick 60 baseline=100 case=200")]
+
+
+def test_suppress_baseline_stall_findings_keeps_earlier_case_stall(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.jsonl"
+    case = tmp_path / "case.jsonl"
+    baseline_rows = [{"tick": tick, "game_frame": 200 if tick >= 100 else tick, "bullets": []} for tick in range(1, 130)]
+    case_rows = [{"tick": tick, "game_frame": 80 if tick >= 40 else tick, "bullets": []} for tick in range(1, 90)]
+    baseline.write_text("\n".join(json.dumps(row) for row in baseline_rows) + "\n", encoding="utf-8")
+    case.write_text("\n".join(json.dumps(row) for row in case_rows) + "\n", encoding="utf-8")
+    findings = [
+        Finding("stalled-progress", "frame=80 ..."),
+        Finding("stalled-frame", "frame 80 repeated >= 8 times"),
+    ]
+    filtered = suppress_baseline_stall_findings(
+        findings,
+        case_trace=case,
+        baseline_trace=baseline,
+        stall_window=8,
+        earlier_tick_margin=16,
+        earlier_frame_margin=16,
+    )
+    assert filtered == findings
 
 
 def test_score_trace_differential_flags_sustained_bullet_drift(tmp_path: Path) -> None:

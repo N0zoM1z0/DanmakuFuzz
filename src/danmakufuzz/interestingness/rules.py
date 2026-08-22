@@ -13,6 +13,14 @@ class Finding:
     detail: str
 
 
+@dataclass(frozen=True)
+class StallEvent:
+    frame: int
+    tick: int | None
+    game_frame: int | None
+    detail: str
+
+
 def _load_trace_records(path: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
@@ -140,27 +148,43 @@ def _stall_detail(record: dict[str, Any], *, frame: int, stall_window: int) -> s
     return " ".join(fields)
 
 
-def score_trace(path: Path, *, stall_window: int = 240, bullet_limit: int = 1024, item_limit: int = 256) -> list[Finding]:
-    findings: list[Finding] = []
+def first_stall_event(path: Path, *, stall_window: int = 240) -> StallEvent | None:
     last_frame: int | None = None
     repeated_frames = 0
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            frame = record.get("frame")
+            if not isinstance(frame, int):
+                frame = record.get("game_frame")
+            if not isinstance(frame, int):
+                continue
+            if last_frame == frame:
+                repeated_frames += 1
+            else:
+                repeated_frames = 0
+            last_frame = frame
+            if repeated_frames >= stall_window:
+                tick = record.get("tick")
+                game_frame = record.get("game_frame")
+                return StallEvent(
+                    frame=frame,
+                    tick=tick if isinstance(tick, int) else None,
+                    game_frame=game_frame if isinstance(game_frame, int) else None,
+                    detail=_stall_detail(record, frame=frame, stall_window=stall_window),
+                )
+    return None
+
+
+def score_trace(path: Path, *, stall_window: int = 240, bullet_limit: int = 1024, item_limit: int = 256) -> list[Finding]:
+    findings: list[Finding] = []
+    stall = first_stall_event(path, stall_window=stall_window)
     with path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
             record = json.loads(line)
             _walk_numbers(record, findings)
-            frame = record.get("frame")
-            if not isinstance(frame, int):
-                frame = record.get("game_frame")
-            if isinstance(frame, int):
-                if last_frame == frame:
-                    repeated_frames += 1
-                else:
-                    repeated_frames = 0
-                last_frame = frame
-                if repeated_frames >= stall_window:
-                    findings.append(Finding("stalled-progress", _stall_detail(record, frame=frame, stall_window=stall_window)))
-                    findings.append(Finding("stalled-frame", f"frame {frame} repeated >= {stall_window} times"))
-                    break
             bullets = record.get("bullets")
             if isinstance(bullets, list) and len(bullets) > bullet_limit:
                 findings.append(Finding("bullet-explosion", f"line {line_number} bullet_count={len(bullets)}"))
@@ -176,7 +200,35 @@ def score_trace(path: Path, *, stall_window: int = 240, bullet_limit: int = 1024
             terminal_reason = record.get("terminal_reason")
             if terminal_reason and terminal_reason not in {"physical-hit", "tick-limit", "input-error"}:
                 findings.append(Finding("unexpected-terminal", str(terminal_reason)))
+    if stall is not None:
+        findings.append(Finding("stalled-progress", stall.detail))
+        findings.append(Finding("stalled-frame", f"frame {stall.frame} repeated >= {stall_window} times"))
     return findings
+
+
+def suppress_baseline_stall_findings(
+    case_findings: list[Finding],
+    *,
+    case_trace: Path,
+    baseline_trace: Path,
+    stall_window: int = 240,
+    earlier_tick_margin: int = 32,
+    earlier_frame_margin: int = 32,
+) -> list[Finding]:
+    baseline_stall = first_stall_event(baseline_trace, stall_window=stall_window)
+    case_stall = first_stall_event(case_trace, stall_window=stall_window)
+    if baseline_stall is None or case_stall is None:
+        return list(case_findings)
+
+    if (
+        baseline_stall.tick is not None
+        and case_stall.tick is not None
+        and case_stall.tick + earlier_tick_margin < baseline_stall.tick
+    ):
+        return list(case_findings)
+    if case_stall.frame + earlier_frame_margin < baseline_stall.frame:
+        return list(case_findings)
+    return [finding for finding in case_findings if finding.kind not in {"stalled-progress", "stalled-frame"}]
 
 
 def score_trace_differential(
