@@ -38,6 +38,8 @@ def _entity_count(record: dict[str, Any], key: str) -> int:
     value = record.get(key)
     if isinstance(value, list):
         return len(value)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
     return 0
 
 
@@ -333,18 +335,18 @@ def score_trace_records(
         if timeline_next_finding is not None:
             findings.append(timeline_next_finding)
             negative_timeline_next_reported = True
-        bullets = record.get("bullets")
-        if isinstance(bullets, list) and len(bullets) > bullet_limit:
-            findings.append(Finding("bullet-explosion", f"line {line_number} bullet_count={len(bullets)}"))
-        lasers = record.get("lasers")
-        if isinstance(lasers, list) and len(lasers) > bullet_limit:
-            findings.append(Finding("laser-explosion", f"line {line_number} laser_count={len(lasers)}"))
-        enemies = record.get("enemies")
-        if isinstance(enemies, list) and len(enemies) > 512:
-            findings.append(Finding("enemy-explosion", f"line {line_number} enemy_count={len(enemies)}"))
-        items = record.get("items")
-        if isinstance(items, list) and len(items) > item_limit:
-            findings.append(Finding("item-explosion", f"line {line_number} item_count={len(items)}"))
+        bullet_count = _entity_count(record, "bullets")
+        if bullet_count > bullet_limit:
+            findings.append(Finding("bullet-explosion", f"line {line_number} bullet_count={bullet_count}"))
+        laser_count = _entity_count(record, "lasers")
+        if laser_count > bullet_limit:
+            findings.append(Finding("laser-explosion", f"line {line_number} laser_count={laser_count}"))
+        enemy_count = _entity_count(record, "enemies")
+        if enemy_count > 512:
+            findings.append(Finding("enemy-explosion", f"line {line_number} enemy_count={enemy_count}"))
+        item_count = _entity_count(record, "items")
+        if item_count > item_limit:
+            findings.append(Finding("item-explosion", f"line {line_number} item_count={item_count}"))
         terminal_reason = record.get("terminal_reason")
         if terminal_reason and terminal_reason not in {"physical-hit", "tick-limit", "input-error"}:
             findings.append(Finding("unexpected-terminal", str(terminal_reason)))
@@ -466,18 +468,18 @@ def score_trace_path_with_baseline(
             if timeline_next_finding is not None:
                 standalone_findings.append(timeline_next_finding)
                 negative_timeline_next_reported = True
-        bullets = case_record.get("bullets")
-        if isinstance(bullets, list) and len(bullets) > bullet_limit:
-            standalone_findings.append(Finding("bullet-explosion", f"line {line_number} bullet_count={len(bullets)}"))
-        lasers = case_record.get("lasers")
-        if isinstance(lasers, list) and len(lasers) > bullet_limit:
-            standalone_findings.append(Finding("laser-explosion", f"line {line_number} laser_count={len(lasers)}"))
-        enemies = case_record.get("enemies")
-        if isinstance(enemies, list) and len(enemies) > 512:
-            standalone_findings.append(Finding("enemy-explosion", f"line {line_number} enemy_count={len(enemies)}"))
-        items = case_record.get("items")
-        if isinstance(items, list) and len(items) > item_limit:
-            standalone_findings.append(Finding("item-explosion", f"line {line_number} item_count={len(items)}"))
+        bullet_count = _entity_count(case_record, "bullets")
+        if bullet_count > bullet_limit:
+            standalone_findings.append(Finding("bullet-explosion", f"line {line_number} bullet_count={bullet_count}"))
+        laser_count = _entity_count(case_record, "lasers")
+        if laser_count > bullet_limit:
+            standalone_findings.append(Finding("laser-explosion", f"line {line_number} laser_count={laser_count}"))
+        enemy_count = _entity_count(case_record, "enemies")
+        if enemy_count > 512:
+            standalone_findings.append(Finding("enemy-explosion", f"line {line_number} enemy_count={enemy_count}"))
+        item_count = _entity_count(case_record, "items")
+        if item_count > item_limit:
+            standalone_findings.append(Finding("item-explosion", f"line {line_number} item_count={item_count}"))
         terminal_reason = case_record.get("terminal_reason")
         if terminal_reason and terminal_reason not in {"physical-hit", "tick-limit", "input-error"}:
             standalone_findings.append(Finding("unexpected-terminal", str(terminal_reason)))
@@ -488,10 +490,8 @@ def score_trace_path_with_baseline(
         tick = case_record.get("tick")
         tick_label = tick if isinstance(tick, int) else line_number
 
-        baseline_bullets_value = baseline_record.get("bullets")
-        case_bullets_value = case_record.get("bullets")
-        baseline_bullets = len(baseline_bullets_value) if isinstance(baseline_bullets_value, list) else 0
-        case_bullets = len(case_bullets_value) if isinstance(case_bullets_value, list) else 0
+        baseline_bullets = _entity_count(baseline_record, "bullets")
+        case_bullets = _entity_count(case_record, "bullets")
         bullet_streak = bullet_streak + 1 if abs(baseline_bullets - case_bullets) >= bullet_drift_threshold else 0
         if (
             bullet_streak >= sustained_window
@@ -509,10 +509,8 @@ def score_trace_path_with_baseline(
             )
             saw_bullet_drift = True
 
-        baseline_enemies_value = baseline_record.get("enemies")
-        case_enemies_value = case_record.get("enemies")
-        baseline_enemies = len(baseline_enemies_value) if isinstance(baseline_enemies_value, list) else 0
-        case_enemies = len(case_enemies_value) if isinstance(case_enemies_value, list) else 0
+        baseline_enemies = _entity_count(baseline_record, "enemies")
+        case_enemies = _entity_count(case_record, "enemies")
         enemy_streak = enemy_streak + 1 if abs(baseline_enemies - case_enemies) >= enemy_drift_threshold else 0
         if enemy_streak >= sustained_window and not saw_enemy_drift:
             differential_findings.append(
@@ -520,10 +518,8 @@ def score_trace_path_with_baseline(
             )
             saw_enemy_drift = True
 
-        baseline_lasers_value = baseline_record.get("lasers")
-        case_lasers_value = case_record.get("lasers")
-        baseline_lasers = len(baseline_lasers_value) if isinstance(baseline_lasers_value, list) else 0
-        case_lasers = len(case_lasers_value) if isinstance(case_lasers_value, list) else 0
+        baseline_lasers = _entity_count(baseline_record, "lasers")
+        case_lasers = _entity_count(case_record, "lasers")
         laser_streak = laser_streak + 1 if abs(baseline_lasers - case_lasers) >= laser_drift_threshold else 0
         if laser_streak >= sustained_window and not saw_laser_drift:
             differential_findings.append(
@@ -531,10 +527,8 @@ def score_trace_path_with_baseline(
             )
             saw_laser_drift = True
 
-        baseline_items_value = baseline_record.get("items")
-        case_items_value = case_record.get("items")
-        baseline_items = len(baseline_items_value) if isinstance(baseline_items_value, list) else 0
-        case_items = len(case_items_value) if isinstance(case_items_value, list) else 0
+        baseline_items = _entity_count(baseline_record, "items")
+        case_items = _entity_count(case_record, "items")
         item_streak = item_streak + 1 if abs(baseline_items - case_items) >= item_drift_threshold else 0
         if item_streak >= sustained_window and not saw_item_drift:
             differential_findings.append(
@@ -770,10 +764,8 @@ def score_trace_differential_records(
         tick = case_record.get("tick")
         tick_label = tick if isinstance(tick, int) else line_number
 
-        baseline_bullets_value = baseline_record.get("bullets")
-        case_bullets_value = case_record.get("bullets")
-        baseline_bullets = len(baseline_bullets_value) if isinstance(baseline_bullets_value, list) else 0
-        case_bullets = len(case_bullets_value) if isinstance(case_bullets_value, list) else 0
+        baseline_bullets = _entity_count(baseline_record, "bullets")
+        case_bullets = _entity_count(case_record, "bullets")
         bullet_streak = bullet_streak + 1 if abs(baseline_bullets - case_bullets) >= bullet_drift_threshold else 0
         if (
             bullet_streak >= sustained_window
@@ -789,28 +781,22 @@ def score_trace_differential_records(
             findings.append(Finding("bullet-count-drift", f"tick {tick_label} baseline={baseline_bullets} case={case_bullets}"))
             saw_bullet_drift = True
 
-        baseline_enemies_value = baseline_record.get("enemies")
-        case_enemies_value = case_record.get("enemies")
-        baseline_enemies = len(baseline_enemies_value) if isinstance(baseline_enemies_value, list) else 0
-        case_enemies = len(case_enemies_value) if isinstance(case_enemies_value, list) else 0
+        baseline_enemies = _entity_count(baseline_record, "enemies")
+        case_enemies = _entity_count(case_record, "enemies")
         enemy_streak = enemy_streak + 1 if abs(baseline_enemies - case_enemies) >= enemy_drift_threshold else 0
         if enemy_streak >= sustained_window and not saw_enemy_drift:
             findings.append(Finding("enemy-count-drift", f"tick {tick_label} baseline={baseline_enemies} case={case_enemies}"))
             saw_enemy_drift = True
 
-        baseline_lasers_value = baseline_record.get("lasers")
-        case_lasers_value = case_record.get("lasers")
-        baseline_lasers = len(baseline_lasers_value) if isinstance(baseline_lasers_value, list) else 0
-        case_lasers = len(case_lasers_value) if isinstance(case_lasers_value, list) else 0
+        baseline_lasers = _entity_count(baseline_record, "lasers")
+        case_lasers = _entity_count(case_record, "lasers")
         laser_streak = laser_streak + 1 if abs(baseline_lasers - case_lasers) >= laser_drift_threshold else 0
         if laser_streak >= sustained_window and not saw_laser_drift:
             findings.append(Finding("laser-count-drift", f"tick {tick_label} baseline={baseline_lasers} case={case_lasers}"))
             saw_laser_drift = True
 
-        baseline_items_value = baseline_record.get("items")
-        case_items_value = case_record.get("items")
-        baseline_items = len(baseline_items_value) if isinstance(baseline_items_value, list) else 0
-        case_items = len(case_items_value) if isinstance(case_items_value, list) else 0
+        baseline_items = _entity_count(baseline_record, "items")
+        case_items = _entity_count(case_record, "items")
         item_streak = item_streak + 1 if abs(baseline_items - case_items) >= item_drift_threshold else 0
         if item_streak >= sustained_window and not saw_item_drift:
             findings.append(Finding("item-count-drift", f"tick {tick_label} baseline={baseline_items} case={case_items}"))

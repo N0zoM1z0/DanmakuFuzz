@@ -12,7 +12,14 @@ import shutil
 import subprocess
 import time
 
-from ..headless.baseline import DEFAULT_ACTION_FILE, DEFAULT_GAME_DIR, build_command, default_headless_binary, run_baseline
+from ..headless.baseline import (
+    DEFAULT_ACTION_FILE,
+    DEFAULT_GAME_DIR,
+    DEFAULT_TRACE_COMPACT_COUNTS,
+    build_command,
+    default_headless_binary,
+    run_baseline,
+)
 from ..interestingness.rules import (
     Finding,
     load_trace_records,
@@ -402,6 +409,7 @@ def run_case(
     auto_shoot: bool,
     continue_after_hit: bool,
     timeout_seconds: float,
+    trace_compact_counts: bool = DEFAULT_TRACE_COMPACT_COUNTS,
     campaign_dir: Path,
     seed_name: str,
     mutant: PayloadMutant,
@@ -429,6 +437,7 @@ def run_case(
         max_ticks=max_ticks,
         auto_shoot=auto_shoot,
         continue_after_hit=continue_after_hit,
+        trace_compact_counts=trace_compact_counts,
     )
     run_env = os.environ.copy()
     run_env["DANMAKUFUZZ_OVERRIDE_DIR"] = str(active_override_dir.resolve())
@@ -522,6 +531,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-auto-shoot", dest="auto_shoot", action="store_false")
     parser.set_defaults(auto_shoot=True)
     parser.add_argument("--continue-after-hit", action="store_true")
+    parser.add_argument("--trace-compact-counts", dest="trace_compact_counts", action="store_true")
+    parser.add_argument("--full-entity-trace", dest="trace_compact_counts", action="store_false")
+    parser.set_defaults(trace_compact_counts=DEFAULT_TRACE_COMPACT_COUNTS)
     return parser.parse_args()
 
 
@@ -569,6 +581,7 @@ def main() -> int:
         max_ticks=profile["max_ticks"],
         auto_shoot=args.auto_shoot,
         continue_after_hit=profile["continue_after_hit"],
+        trace_compact_counts=args.trace_compact_counts,
         dry_run=False,
     )
     baseline_trace_value = baseline_metadata.get("trace")
@@ -608,6 +621,7 @@ def main() -> int:
                 max_ticks=profile["max_ticks"],
                 auto_shoot=args.auto_shoot,
                 continue_after_hit=profile["continue_after_hit"],
+                trace_compact_counts=args.trace_compact_counts,
                 timeout_seconds=profile["timeout_seconds"],
                 campaign_dir=artifact_dir.resolve(),
                 seed_name=seed_ecl.name,
@@ -647,6 +661,7 @@ def main() -> int:
         "actions": str(profile["action_file"]),
         "max_ticks": profile["max_ticks"],
         "continue_after_hit": profile["continue_after_hit"],
+        "trace_compact_counts": args.trace_compact_counts,
         "mutants_generated": len(mutants),
         "cases_run": totals["cases"],
         "interesting_cases": totals["interesting"],

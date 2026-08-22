@@ -12,6 +12,7 @@ from ..repo import ARTIFACTS_DIR, CONFIG_DIR, REFERENCE_DIR, THIRD_PARTY_DIR, en
 
 DEFAULT_ACTION_FILE = CONFIG_DIR / "headless_baseline_actions.txt"
 DEFAULT_GAME_DIR = REFERENCE_DIR / "retail" / "game" / "th06"
+DEFAULT_TRACE_COMPACT_COUNTS = True
 
 
 def default_headless_binary() -> Path:
@@ -32,6 +33,7 @@ def build_command(
     max_ticks: int,
     auto_shoot: bool,
     continue_after_hit: bool,
+    trace_compact_counts: bool = DEFAULT_TRACE_COMPACT_COUNTS,
 ) -> list[str]:
     command = [
         str(binary),
@@ -45,6 +47,8 @@ def build_command(
         "--actions", str(actions),
         "--trace", str(trace),
     ]
+    if trace_compact_counts:
+        command.append("--trace-compact-counts")
     if auto_shoot:
         command.append("--auto-shoot")
     if continue_after_hit:
@@ -67,6 +71,7 @@ def run_baseline(
     max_ticks: int,
     auto_shoot: bool,
     continue_after_hit: bool,
+    trace_compact_counts: bool = DEFAULT_TRACE_COMPACT_COUNTS,
     log_path: Path | None = None,
     dry_run: bool,
 ) -> dict[str, object]:
@@ -93,6 +98,7 @@ def run_baseline(
         max_ticks=max_ticks,
         auto_shoot=auto_shoot,
         continue_after_hit=continue_after_hit,
+        trace_compact_counts=trace_compact_counts,
     )
     metadata = {
         "binary": str(binary.resolve()),
@@ -103,6 +109,7 @@ def run_baseline(
         "character": character,
         "shot_type": shot_type,
         "max_ticks": max_ticks,
+        "trace_compact_counts": trace_compact_counts,
         "action_file": str(action_file.resolve()),
         "action_count": actions.length,
         "resource_override_dir": str(resource_override_dir.resolve()) if resource_override_dir is not None else None,
@@ -150,6 +157,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-auto-shoot", dest="auto_shoot", action="store_false")
     parser.set_defaults(auto_shoot=True)
     parser.add_argument("--continue-after-hit", action="store_true")
+    parser.add_argument("--trace-compact-counts", dest="trace_compact_counts", action="store_true")
+    parser.add_argument("--full-entity-trace", dest="trace_compact_counts", action="store_false")
+    parser.set_defaults(trace_compact_counts=DEFAULT_TRACE_COMPACT_COUNTS)
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -173,6 +183,7 @@ def main() -> int:
         max_ticks=args.max_ticks,
         auto_shoot=args.auto_shoot,
         continue_after_hit=args.continue_after_hit,
+        trace_compact_counts=args.trace_compact_counts,
         dry_run=args.dry_run,
     )
     print(json.dumps(metadata, indent=2))

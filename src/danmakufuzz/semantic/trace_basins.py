@@ -106,6 +106,15 @@ def _normalize_enemy(enemy: dict[str, Any], *, pos_round: int) -> dict[str, Any]
     }
 
 
+def _entity_count(record: dict[str, Any], key: str) -> int:
+    value = record.get(key)
+    if isinstance(value, list):
+        return len(value)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return 0
+
+
 def _normalize_record(record: dict[str, Any], *, pos_round: int) -> dict[str, Any]:
     enemies = record.get("enemies")
     normalized_enemies = []
@@ -115,10 +124,8 @@ def _normalize_record(record: dict[str, Any], *, pos_round: int) -> dict[str, An
             for enemy in enemies
             if isinstance(enemy, dict)
         ]
-    items = record.get("items")
-    item_count = len(items) if isinstance(items, list) else 0
-    bullets = record.get("bullets")
-    bullet_count = len(bullets) if isinstance(bullets, list) else 0
+    item_count = _entity_count(record, "items")
+    bullet_count = _entity_count(record, "bullets")
     return {
         "tick": int(record.get("tick", 0)),
         "game_frame": int(record.get("game_frame", 0)),

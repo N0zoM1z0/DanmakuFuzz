@@ -33,6 +33,8 @@ def _peak_count(record: dict[str, object], key: str) -> int:
     value = record.get(key)
     if isinstance(value, list):
         return len(value)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
     return 0
 
 

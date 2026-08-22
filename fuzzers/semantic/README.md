@@ -138,6 +138,12 @@ artifact path but stages the active override into one fixed per-worker
 directory before launching headless. That keeps the preserved payloads portable
 without letting per-case artifact path strings perturb the semantic run.
 
+The semantic lane now defaults headless traces to a compact count-oriented
+format for `items`, `bullets`, and `lasers`. That keeps the scheduler-facing
+enemy/state data intact while cutting the hottest trace size and JSON parse
+costs. Use `--full-entity-trace` on `semantic.ecl_campaign` or
+`headless.baseline` when you explicitly need the legacy per-entity arrays.
+
 The campaign root also writes `summary.jsonl` and `campaign.json`.
 
 The generic differential oracle is intentionally a bit stricter than before for

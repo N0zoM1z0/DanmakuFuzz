@@ -47,6 +47,15 @@ def _trace_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _entity_count(record: dict[str, Any], key: str) -> int:
+    value = record.get(key)
+    if isinstance(value, list):
+        return len(value)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return 0
+
+
 def _tail_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     if not rows:
         raise RuntimeError("trace is empty")
@@ -61,8 +70,8 @@ def _tail_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "bombs": last_record.get("bombs"),
         "power": last_record.get("power"),
         "enemy_count": last_record.get("enemy_count"),
-        "item_count": len(last_record.get("items", [])),
-        "bullet_count": len(last_record.get("bullets", [])),
+        "item_count": _entity_count(last_record, "items"),
+        "bullet_count": _entity_count(last_record, "bullets"),
         "stage_vm": {
             "loaded": stage_vm.get("loaded") if isinstance(stage_vm, dict) else None,
             "script_time": stage_vm.get("script_time") if isinstance(stage_vm, dict) else None,
