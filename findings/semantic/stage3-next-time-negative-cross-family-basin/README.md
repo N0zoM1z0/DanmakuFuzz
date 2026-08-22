@@ -8,21 +8,19 @@ mutator families can drive the game into the same impossible timeline state.
 The generic representatives tracked here are:
 
 - `bullet-count1`: `(sub=0, instruction=3)` mutates `bullet-count1` from `1` to `4`;
+- `bullet-count2`: `(sub=1, instruction=3)` mutates `bullet-count2` from `1` to `8`;
 - `shoot-interval`: `(sub=0, instruction=6)` mutates the interval from `60` to `64`.
 
 Separately, the dedicated `call-sub-zero` finding has already shown that a
-third family, `call-sub`, can reach the same sink signature under its own
+fourth family, `call-sub`, can reach the same sink signature under its own
 stable reproducer.
 
-After widening the generic exploration lane on August 22, 2026, the broader
-portable core sweep also added `bullet-count2` to the same Stage 3 sink family.
-The current compact reproducer in this directory still tracks the two stable
-generic representatives above, but the wider artifact evidence now shows that
-the basin is at least four-family: `call-sub`, `bullet-count1`,
-`bullet-count2`, and `shoot-interval`.
+Taken together, the basin is now at least four-family: `call-sub`,
+`bullet-count1`, `bullet-count2`, and `shoot-interval`.
 
-Even though those mutations touch different opcodes and fields, all three runs
-collapse into the same normalized sink snapshot:
+Even though those mutations touch different opcodes and fields, the three
+generic runs in this directory already collapse into the same normalized sink
+snapshot:
 
 - sink signature:
   `83214f07b8e735a3dc4dc894c562c44385e3cc9680ca4a7983f10539b8e5a6f1`
@@ -30,23 +28,28 @@ collapse into the same normalized sink snapshot:
 - sink time: `1345`
 - sink `ecl_timeline.next_time`: `-9163`
 
-Rebuild the two generic triggering payloads from the local baseline corpus and
+Rebuild the three generic triggering payloads from the local baseline corpus and
 rerun the shared-basin check with:
 
 ```sh
 PYTHONPATH=src python3 findings/semantic/stage3-next-time-negative-cross-family-basin/reproduce.py
 ```
 
-This reproducer runs the two generic representatives against one shared Stage 3
+This reproducer runs the three generic representatives against one shared Stage 3
 baseline trace, then verifies that the resulting traces land in the same sink
 signature instead of only checking for a crash or a single negative field.
 Because this Stage 3 basin has shown path/layout sensitivity in headless mode,
 the reproducer retries each representative with fresh isolated worker copies
 until it reaches the expected sink or exhausts the configured attempt budget.
+When `--artifact-dir` is omitted, it also rotates across a short list of known
+stable artifact roots before giving up. Passing an explicit `--artifact-dir`
+disables that root-level fallback and can still expose the old layout-sensitive
+path behavior.
 
 Tracked compact payload patches:
 
 - `payload_bullet_count1_four.json`
+- `payload_bullet_count2_eight.json`
 - `payload_shoot_interval_sixtyfour.json`
 
 Current local evidence:
@@ -79,9 +82,9 @@ Current interpretation:
 
 - headless: clearly interesting and reproducible;
 - the basin is cross-family inside Stage 3, not `call-sub`-only;
-- the August 22, 2026 widened sweep shows that `bullet-count2` also lands in
-  the same sink, so the generic basin is broader than the original two-payload
-  reproducer alone proves;
+- the widened August 22, 2026 reproducer now includes `bullet-count2` directly,
+  so the generic proof no longer depends on artifact-only evidence for that
+  family;
 - note: the headless path is somewhat layout-sensitive, so the reproducer uses
   isolated worker copies and a bounded retry loop instead of assuming one-shot
   determinism;

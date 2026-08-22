@@ -26,6 +26,11 @@ EXPECTED_SHARED_SIGNATURE = "83214f07b8e735a3dc4dc894c562c44385e3cc9680ca4a7983f
 EXPECTED_SHARED_SINK_TICK = 1347
 EXPECTED_SHARED_SINK_TIME = 1345
 EXPECTED_SHARED_NEXT_TIME = -9163
+DEFAULT_ARTIFACT_DIR_CANDIDATES = (
+    ARTIFACTS_DIR / "tmp-stage3-generic-basin-retry-bc2",
+    ARTIFACTS_DIR / "tmp-stage3-generic-basin-retry",
+    ARTIFACTS_DIR / "tmp-stage3-generic-basin-retry-b",
+)
 
 REPRESENTATIVES = (
     {
@@ -40,6 +45,20 @@ REPRESENTATIVES = (
             "mutated_value": 4,
             "field_name": "bullet_count1",
             "family": "bullet-count1",
+        },
+    },
+    {
+        "name": "bullet-count2-eight",
+        "path": (1, 3),
+        "patch": "payload_bullet_count2_eight.json",
+        "target_sha256": "848ca71719a34bfce786faf0bfa2321678fea76718a138bd7feadfc6fd2196a1",
+        "checks": {
+            "opcode": 67,
+            "field_offset": 8,
+            "original_value": 1,
+            "mutated_value": 8,
+            "field_name": "bullet_count2",
+            "family": "bullet-count2",
         },
     },
     {
@@ -112,7 +131,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--artifact-dir",
         type=Path,
-        default=ARTIFACTS_DIR / "tmp-stage3-generic-basin-a",
+        default=None,
     )
     parser.add_argument("--headless-bin", type=Path, default=default_headless_binary())
     parser.add_argument("--game-dir", type=Path, default=DEFAULT_GAME_DIR)
@@ -143,12 +162,7 @@ def _case_sink_summary(*, baseline_trace: Path, case_trace: Path) -> dict[str, o
     }
 
 
-def main() -> int:
-    args = parse_args()
-    if not TARGET_SEED.is_file():
-        raise FileNotFoundError(f"missing seed corpus entry: {TARGET_SEED}")
-
-    artifact_dir = args.artifact_dir.resolve()
+def _run_once(*, artifact_dir: Path, args: argparse.Namespace) -> dict[str, object]:
     ensure_directory(artifact_dir)
     baseline_worker_game_dir = artifact_dir / "worker-baseline"
     baseline_worker_prepare = prepare_worker_game_dir(
@@ -308,8 +322,43 @@ def main() -> int:
     }
     summary_path = artifact_dir / "summary.json"
     summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(summary, indent=2))
-    return 0
+    return summary
+
+
+def main() -> int:
+    args = parse_args()
+    if not TARGET_SEED.is_file():
+        raise FileNotFoundError(f"missing seed corpus entry: {TARGET_SEED}")
+
+    artifact_dirs = (
+        [args.artifact_dir.resolve()]
+        if args.artifact_dir is not None
+        else [path.resolve() for path in DEFAULT_ARTIFACT_DIR_CANDIDATES]
+    )
+    failures: list[dict[str, object]] = []
+    for artifact_dir in artifact_dirs:
+        try:
+            summary = _run_once(artifact_dir=artifact_dir, args=args)
+        except RuntimeError as exc:
+            if args.artifact_dir is not None:
+                raise
+            failures.append(
+                {
+                    "artifact_dir": str(artifact_dir),
+                    "reason": str(exc),
+                }
+            )
+            continue
+        if failures:
+            summary["artifact_dir_fallback_failures"] = failures
+            summary_path = artifact_dir / "summary.json"
+            summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(summary, indent=2))
+        return 0
+    raise RuntimeError(
+        "stage3 cross-family reproducer exhausted default artifact roots without reaching the shared sink: "
+        + json.dumps(failures, indent=2)
+    )
 
 
 if __name__ == "__main__":
