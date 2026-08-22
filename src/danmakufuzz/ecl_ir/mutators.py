@@ -419,6 +419,85 @@ def _sample_value_groups(
     return selected
 
 
+def _dedupe_pairs(
+    values: list[tuple[int, int]],
+    *,
+    minimum: int,
+    maximum: int,
+    current: tuple[int, int],
+) -> list[tuple[int, int]]:
+    seen: set[tuple[int, int]] = set()
+    deduped: list[tuple[int, int]] = []
+    for left, right in values:
+        pair = (int(left), int(right))
+        if pair == current:
+            continue
+        if left < minimum or left > maximum or right < minimum or right > maximum:
+            continue
+        if pair in seen:
+            continue
+        seen.add(pair)
+        deduped.append(pair)
+    return deduped
+
+
+def _shuffle_filtered_pairs(
+    values: list[tuple[int, int]],
+    *,
+    current: tuple[int, int],
+    minimum: int,
+    maximum: int,
+    rng: random.Random,
+) -> list[tuple[int, int]]:
+    candidates = _dedupe_pairs(values, minimum=minimum, maximum=maximum, current=current)
+    rng.shuffle(candidates)
+    return candidates
+
+
+def _sample_pair_groups(
+    groups: list[list[tuple[int, int]]],
+    *,
+    current: tuple[int, int],
+    minimum: int,
+    maximum: int,
+    budget: int,
+    rng: random.Random,
+) -> list[tuple[int, int]]:
+    if budget <= 0:
+        return []
+
+    pending = [
+        _shuffle_filtered_pairs(
+            group,
+            current=current,
+            minimum=minimum,
+            maximum=maximum,
+            rng=rng,
+        )
+        for group in groups
+    ]
+    selected: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+    while len(selected) < budget:
+        progressed = False
+        for group in pending:
+            while group and group[-1] in seen:
+                group.pop()
+            if not group:
+                continue
+            pair = group.pop()
+            if pair in seen:
+                continue
+            selected.append(pair)
+            seen.add(pair)
+            progressed = True
+            if len(selected) >= budget:
+                break
+        if not progressed:
+            break
+    return selected
+
+
 def _relative_values(current: int, deltas: tuple[int, ...]) -> list[int]:
     values = [current + delta for delta in deltas]
     values.append(-current)
@@ -709,6 +788,97 @@ def _sample_signed_i16(
     )
 
 
+def _sample_paired_signed_i32(
+    *,
+    current_left: int,
+    current_right: int,
+    budget: int,
+    rng: random.Random,
+    field_left: str,
+    field_right: str,
+) -> list[tuple[int, int]]:
+    if budget <= 0:
+        return []
+
+    left_rng = random.Random(rng.getrandbits(64))
+    right_rng = random.Random(rng.getrandbits(64))
+    left_values = _sample_signed_i32(
+        current=current_left,
+        budget=max(8, budget * 2),
+        rng=left_rng,
+        family=field_left,
+    )
+    right_values = _sample_signed_i32(
+        current=current_right,
+        budget=max(8, budget * 2),
+        rng=right_rng,
+        family=field_right,
+    )
+    anchor_pairs = [
+        (-1, -1),
+        (0, 0),
+        (1, 1),
+        (2, 2),
+        (4, 4),
+        (8, 8),
+        (16, 16),
+        (32, 32),
+        (64, 64),
+        (127, 127),
+        (128, 128),
+        (255, 255),
+        (256, 256),
+        (511, 511),
+        (1024, 1024),
+        (0, 1),
+        (1, 0),
+        (1, 2),
+        (2, 1),
+        (1, 4),
+        (4, 1),
+        (8, 1),
+        (1, 8),
+        (16, 1),
+        (1, 16),
+        (0, -1),
+        (-1, 0),
+    ]
+    relative_pairs = [
+        (current_left + delta, current_right + delta)
+        for delta in (-256, -64, -16, -4, -1, 1, 4, 16, 64, 256)
+    ]
+    scaled_pairs = [
+        (current_left * factor, current_right * factor)
+        for factor in (-4, -2, 2, 4, 8)
+    ]
+    diagonal_pairs = list(zip(left_values, right_values, strict=False))
+    crossed_pairs = [
+        (left_values[index], right_values[-(index + 1)])
+        for index in range(min(len(left_values), len(right_values)))
+    ]
+    same_value_pairs = [
+        (value, value)
+        for value in list(dict.fromkeys(left_values + right_values))
+    ]
+    swapped_pair = [(current_right, current_left)] if current_left != current_right else []
+    return _sample_pair_groups(
+        [
+            anchor_pairs,
+            relative_pairs,
+            scaled_pairs,
+            diagonal_pairs,
+            crossed_pairs,
+            same_value_pairs,
+            swapped_pair,
+        ],
+        current=(current_left, current_right),
+        minimum=-(1 << 31),
+        maximum=(1 << 31) - 1,
+        budget=budget,
+        rng=rng,
+    )
+
+
 def _sample_site_mutants(
     ecl: EclFile,
     *,
@@ -805,6 +975,57 @@ def _sample_site_mutants(
                 )
             )
 
+    def append_i32_pair_samples(
+        family: str,
+        *,
+        left_offset: int,
+        right_offset: int,
+        field_left: str,
+        field_right: str,
+    ) -> None:
+        current_left = _read_i32(instruction.args, left_offset)
+        current_right = _read_i32(instruction.args, right_offset)
+        rng = _site_rng(
+            random_seed,
+            opcode=instruction.opcode,
+            sub_index=sub_index,
+            instruction_index=instruction_index,
+            family=family,
+        )
+        for left_value, right_value in _sample_paired_signed_i32(
+            current_left=current_left,
+            current_right=current_right,
+            budget=max(2, samples_per_site),
+            rng=rng,
+            field_left=field_left,
+            field_right=field_right,
+        ):
+            mutated_args = _replace_i32(instruction.args, left_offset, left_value)
+            mutated_args = _replace_i32(mutated_args, right_offset, right_value)
+            mutants.append(
+                Mutant(
+                    f"{family}-sampled-{_value_slug(left_value)}-{_value_slug(right_value)}",
+                    key,
+                    _clone_with_mutated_instruction(
+                        ecl,
+                        sub_index,
+                        instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": mutated_args}),
+                    ),
+                    metadata={
+                        "strategy": "sampled-i32-pair",
+                        "family": family,
+                        "field_left": field_left,
+                        "field_right": field_right,
+                        "left_offset": left_offset,
+                        "right_offset": right_offset,
+                        "left_value": left_value,
+                        "right_value": right_value,
+                        "random_seed": random_seed,
+                    },
+                )
+            )
+
     sub_count = len(ecl.subs)
     if instruction.opcode in {OP_JUMP, OP_JUMPDEC} and len(instruction.args) >= 8:
         append_i32_samples("jump-offset", arg_offset=4, field="offset")
@@ -833,6 +1054,13 @@ def _sample_site_mutants(
     if OP_BULLETFANAIMED <= instruction.opcode <= OP_BULLETRANDOM and len(instruction.args) >= 12:
         append_i32_samples("bullet-count1", arg_offset=4, field="count")
         append_i32_samples("bullet-count2", arg_offset=8, field="count")
+        append_i32_pair_samples(
+            "bullet-count-cross",
+            left_offset=4,
+            right_offset=8,
+            field_left="count",
+            field_right="count",
+        )
         append_i16_samples("bullet-sprite", arg_offset=0, field="small-positive")
     if instruction.opcode == OP_DROPITEMS and len(instruction.args) >= 4:
         append_i32_samples("drop-items", arg_offset=0, field="count")

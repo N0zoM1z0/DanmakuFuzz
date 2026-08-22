@@ -125,6 +125,10 @@ def mutant_family(mutant: PayloadMutant, family_filters: Sequence[str] | None = 
         for family_filter in family_filters:
             if family_filter and family_filter in mutant.name:
                 return family_filter.rstrip("-")
+    metadata = mutant.metadata or {}
+    metadata_family = metadata.get("family")
+    if isinstance(metadata_family, str) and metadata_family:
+        return metadata_family
     parts = [part for part in mutant.name.split("-") if part]
     if len(parts) >= 2:
         return "-".join(parts[:2])
