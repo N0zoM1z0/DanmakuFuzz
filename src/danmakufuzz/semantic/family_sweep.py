@@ -162,6 +162,7 @@ def main() -> int:
             max_ticks=int(profile["max_ticks"]),
             auto_shoot=args.auto_shoot,
             continue_after_hit=bool(profile["continue_after_hit"]),
+            trace_compact_counts=True,
             dry_run=False,
         )
         baseline_trace_value = baseline_metadata.get("trace")
@@ -199,6 +200,7 @@ def main() -> int:
                     auto_shoot=args.auto_shoot,
                     continue_after_hit=bool(profile["continue_after_hit"]),
                     timeout_seconds=float(profile["timeout_seconds"]),
+                    trace_compact_counts=True,
                     campaign_dir=seed_dir,
                     seed_name=seed_ecl.name,
                     mutant=mutant,

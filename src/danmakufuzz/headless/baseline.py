@@ -12,7 +12,7 @@ from ..repo import ARTIFACTS_DIR, CONFIG_DIR, REFERENCE_DIR, THIRD_PARTY_DIR, en
 
 DEFAULT_ACTION_FILE = CONFIG_DIR / "headless_baseline_actions.txt"
 DEFAULT_GAME_DIR = REFERENCE_DIR / "retail" / "game" / "th06"
-DEFAULT_TRACE_COMPACT_COUNTS = True
+DEFAULT_TRACE_COMPACT_COUNTS = False
 
 
 def default_headless_binary() -> Path:

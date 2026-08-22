@@ -217,6 +217,7 @@ def _get_worker_baseline(
         max_ticks=max_ticks,
         auto_shoot=auto_shoot,
         continue_after_hit=continue_after_hit,
+        trace_compact_counts=True,
         log_path=log_path,
         dry_run=False,
     )
@@ -317,6 +318,7 @@ def _run_task(
                 auto_shoot=auto_shoot,
                 continue_after_hit=continue_after_hit,
                 timeout_seconds=timeout_seconds,
+                trace_compact_counts=True,
                 campaign_dir=task_dir,
                 seed_name=task.seed_ecl.name,
                 mutant=mutant,

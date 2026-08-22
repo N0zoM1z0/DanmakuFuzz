@@ -37,6 +37,7 @@ from .payload_mutants import (
 
 ECLDATA_RE = re.compile(r"ecldata(?P<stage>\d+)\.ecl$")
 LONG_ACTION_FILE = CONFIG_DIR / "headless_baseline_actions_1800.txt"
+DEFAULT_CAMPAIGN_TRACE_COMPACT_COUNTS = True
 DEFAULT_EXPLORATION_CAMPAIGN_LIMIT = 128
 DEFAULT_EXPLORATION_SWEEP_LIMIT = 32
 DEFAULT_EXPLORATION_GRID_LIMIT = 32
@@ -533,7 +534,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--continue-after-hit", action="store_true")
     parser.add_argument("--trace-compact-counts", dest="trace_compact_counts", action="store_true")
     parser.add_argument("--full-entity-trace", dest="trace_compact_counts", action="store_false")
-    parser.set_defaults(trace_compact_counts=DEFAULT_TRACE_COMPACT_COUNTS)
+    parser.set_defaults(trace_compact_counts=DEFAULT_CAMPAIGN_TRACE_COMPACT_COUNTS)
     return parser.parse_args()
 
 
