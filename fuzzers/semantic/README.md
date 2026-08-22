@@ -124,6 +124,12 @@ without letting per-case artifact path strings perturb the semantic run.
 
 The campaign root also writes `summary.jsonl` and `campaign.json`.
 
+The generic differential oracle is intentionally a bit stricter than before for
+plain bullet-count drift. It still keeps large sustained surges and collapses,
+but it no longer treats every small persistent bullet delta as equally
+interesting. That keeps the portable exploration lane focused on stronger
+semantic route changes instead of flooding reviews with weak count wobble.
+
 Minimize a captured interesting case with:
 
 ```sh

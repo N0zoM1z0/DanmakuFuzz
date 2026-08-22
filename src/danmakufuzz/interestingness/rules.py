@@ -214,6 +214,24 @@ def _mapping_drift_detail(
     return None
 
 
+def _is_significant_bullet_count_drift(
+    *,
+    baseline_count: int,
+    case_count: int,
+    strong_threshold: int,
+    collapse_anchor: int,
+    collapse_divisor: int,
+) -> bool:
+    difference = abs(baseline_count - case_count)
+    if difference >= strong_threshold:
+        return True
+    if collapse_divisor <= 0:
+        raise ValueError("collapse_divisor must be positive")
+    if baseline_count >= collapse_anchor and case_count <= baseline_count // collapse_divisor:
+        return True
+    return False
+
+
 def _stall_detail(record: dict[str, Any], *, frame: int, stall_window: int) -> str:
     fields = [f"frame={frame}", f"window>={stall_window}"]
     tick = record.get("tick")
@@ -387,6 +405,9 @@ def score_trace_differential_records(
     *,
     sustained_window: int = 16,
     bullet_drift_threshold: int = 8,
+    bullet_strong_drift_threshold: int = 64,
+    bullet_collapse_anchor: int = 20,
+    bullet_collapse_divisor: int = 3,
     enemy_drift_threshold: int = 2,
     laser_drift_threshold: int = 1,
     item_drift_threshold: int = 4,
@@ -435,7 +456,17 @@ def score_trace_differential_records(
         baseline_bullets = len(baseline_bullets_value) if isinstance(baseline_bullets_value, list) else 0
         case_bullets = len(case_bullets_value) if isinstance(case_bullets_value, list) else 0
         bullet_streak = bullet_streak + 1 if abs(baseline_bullets - case_bullets) >= bullet_drift_threshold else 0
-        if bullet_streak >= sustained_window and not saw_bullet_drift:
+        if (
+            bullet_streak >= sustained_window
+            and not saw_bullet_drift
+            and _is_significant_bullet_count_drift(
+                baseline_count=baseline_bullets,
+                case_count=case_bullets,
+                strong_threshold=bullet_strong_drift_threshold,
+                collapse_anchor=bullet_collapse_anchor,
+                collapse_divisor=bullet_collapse_divisor,
+            )
+        ):
             findings.append(Finding("bullet-count-drift", f"tick {tick_label} baseline={baseline_bullets} case={case_bullets}"))
             saw_bullet_drift = True
 
@@ -584,6 +615,9 @@ def score_trace_differential(
     *,
     sustained_window: int = 16,
     bullet_drift_threshold: int = 8,
+    bullet_strong_drift_threshold: int = 64,
+    bullet_collapse_anchor: int = 20,
+    bullet_collapse_divisor: int = 3,
     enemy_drift_threshold: int = 2,
     laser_drift_threshold: int = 1,
     item_drift_threshold: int = 4,
@@ -597,6 +631,9 @@ def score_trace_differential(
         load_trace_records(baseline_path),
         sustained_window=sustained_window,
         bullet_drift_threshold=bullet_drift_threshold,
+        bullet_strong_drift_threshold=bullet_strong_drift_threshold,
+        bullet_collapse_anchor=bullet_collapse_anchor,
+        bullet_collapse_divisor=bullet_collapse_divisor,
         enemy_drift_threshold=enemy_drift_threshold,
         laser_drift_threshold=laser_drift_threshold,
         item_drift_threshold=item_drift_threshold,
