@@ -20,6 +20,7 @@ FINDING_SEVERITY = {
     "process-exit": 2,
     "missing-returncode": 3,
     "non-finite": 4,
+    "timeline-next-time-negative": 4,
     "stalled-progress": 5,
     "stalled-frame": 5,
     "stage-script-drift": 5,

@@ -17,6 +17,27 @@ def test_score_trace_flags_non_finite(tmp_path: Path) -> None:
     assert any(finding.kind == "non-finite" for finding in findings)
 
 
+def test_score_trace_flags_negative_timeline_next_time(tmp_path: Path) -> None:
+    trace = tmp_path / "trace.jsonl"
+    trace.write_text(
+        json.dumps(
+            {
+                "tick": 1347,
+                "game_frame": 1345,
+                "ecl_timeline": {"time": 1345, "next_time": -9163},
+                "bullets": [],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    findings = score_trace(trace)
+    finding = next(finding for finding in findings if finding.kind == "timeline-next-time-negative")
+    assert "ecl_timeline.next_time=-9163" in finding.detail
+    assert "tick=1347" in finding.detail
+    assert "game_frame=1345" in finding.detail
+
+
 def test_score_trace_uses_game_frame_for_stall_detection(tmp_path: Path) -> None:
     trace = tmp_path / "trace.jsonl"
     rows = [

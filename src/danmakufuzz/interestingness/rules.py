@@ -51,6 +51,28 @@ def _path_label(path: tuple[str, ...]) -> str:
     return ".".join(path)
 
 
+def _timeline_next_time_finding(record: dict[str, Any], *, line_number: int) -> Finding | None:
+    timeline = record.get("ecl_timeline")
+    if not isinstance(timeline, dict):
+        return None
+    next_time = timeline.get("next_time")
+    if not isinstance(next_time, int):
+        return None
+    if next_time >= -1:
+        return None
+    tick = record.get("tick")
+    game_frame = record.get("game_frame")
+    timeline_time = timeline.get("time")
+    detail = [f"line {line_number}", f"ecl_timeline.next_time={next_time}"]
+    if isinstance(tick, int):
+        detail.append(f"tick={tick}")
+    if isinstance(game_frame, int):
+        detail.append(f"game_frame={game_frame}")
+    if isinstance(timeline_time, int):
+        detail.append(f"ecl_timeline.time={timeline_time}")
+    return Finding("timeline-next-time-negative", " ".join(detail))
+
+
 def _scalar_drift_detail(
     baseline_record: dict[str, Any],
     case_record: dict[str, Any],
@@ -181,10 +203,17 @@ def first_stall_event(path: Path, *, stall_window: int = 240) -> StallEvent | No
 def score_trace(path: Path, *, stall_window: int = 240, bullet_limit: int = 1024, item_limit: int = 256) -> list[Finding]:
     findings: list[Finding] = []
     stall = first_stall_event(path, stall_window=stall_window)
+    negative_timeline_next_reported = False
     with path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
             record = json.loads(line)
             _walk_numbers(record, findings)
+            timeline_next_finding = None
+            if not negative_timeline_next_reported:
+                timeline_next_finding = _timeline_next_time_finding(record, line_number=line_number)
+            if timeline_next_finding is not None:
+                findings.append(timeline_next_finding)
+                negative_timeline_next_reported = True
             bullets = record.get("bullets")
             if isinstance(bullets, list) and len(bullets) > bullet_limit:
                 findings.append(Finding("bullet-explosion", f"line {line_number} bullet_count={len(bullets)}"))
