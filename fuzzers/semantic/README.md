@@ -52,6 +52,29 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.family_sweep \
   --limit-per-seed 8
 ```
 
+Push the same reusable lane across a seed-ECL × sampler-seed grid with isolated
+worker game copies using:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.exploration_grid \
+  --seed-ecl reference/corpus/ecl/original/ecldata1.ecl \
+  --seed-ecl reference/corpus/ecl/original/ecldata2.ecl \
+  --random-seed-count 4 \
+  --limit-per-task 8 \
+  --worker-count 2
+```
+
+This runner keeps the campaign logic generic but lifts throughput in the way
+that matters for finding weird cases:
+
+- each worker gets its own copied game directory under the artifact root;
+- each task is one `(seed_ecl, random_seed)` pair, so you can widen exploration
+  without changing the mutator families themselves;
+- worker-local baseline traces are cached per stage/profile/control-seed, so the
+  same worker does not rerun an identical baseline for every sampler seed;
+- every task still writes its own `summary.jsonl` and `campaign.json`, keeping
+  later clustering, minimization, and retail replay handoff decoupled.
+
 Switch that entrypoint into a longer boss-oriented profile with:
 
 ```sh

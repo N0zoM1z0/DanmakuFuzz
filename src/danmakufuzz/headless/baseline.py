@@ -67,6 +67,7 @@ def run_baseline(
     max_ticks: int,
     auto_shoot: bool,
     continue_after_hit: bool,
+    log_path: Path | None = None,
     dry_run: bool,
 ) -> dict[str, object]:
     if not binary.is_file():
@@ -106,6 +107,7 @@ def run_baseline(
         "action_count": actions.length,
         "resource_override_dir": str(resource_override_dir.resolve()) if resource_override_dir is not None else None,
         "trace": str(trace_path.resolve()),
+        "log": str(log_path.resolve()) if log_path is not None else None,
         "command": command,
         "dry_run": dry_run,
     }
@@ -115,7 +117,19 @@ def run_baseline(
     run_env = os.environ.copy()
     if resource_override_dir is not None:
         run_env["DANMAKUFUZZ_OVERRIDE_DIR"] = str(resource_override_dir.resolve())
-    subprocess.run(command, cwd=game_dir, check=True, env=run_env)
+    if log_path is not None:
+        ensure_directory(log_path.resolve().parent)
+        with log_path.open("w", encoding="utf-8") as log_handle:
+            subprocess.run(
+                command,
+                cwd=game_dir,
+                check=True,
+                env=run_env,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+            )
+    else:
+        subprocess.run(command, cwd=game_dir, check=True, env=run_env)
     return metadata
 
 
