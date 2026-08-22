@@ -16,9 +16,7 @@ from ..headless.baseline import DEFAULT_ACTION_FILE, DEFAULT_GAME_DIR, build_com
 from ..interestingness.rules import (
     Finding,
     load_trace_records,
-    score_trace_differential_records,
-    score_trace_records,
-    suppress_baseline_stall_findings_records,
+    score_trace_path_with_baseline,
 )
 from ..repo import ARTIFACTS_DIR, CONFIG_DIR, REFERENCE_DIR, ensure_directory
 from .payload_mutants import (
@@ -456,25 +454,15 @@ def run_case(
 
     findings = classify_process_result(returncode, timed_out=timed_out)
     if trace_path.exists() and trace_path.stat().st_size > 0:
-        case_records = load_trace_records(trace_path)
-        trace_findings = score_trace_records(case_records)
         resolved_baseline_records = baseline_records
         if resolved_baseline_records is None and baseline_trace is not None and baseline_trace.is_file():
             resolved_baseline_records = load_trace_records(baseline_trace)
-        if resolved_baseline_records is not None:
-            trace_findings = suppress_baseline_stall_findings_records(
-                trace_findings,
-                case_records=case_records,
+        findings.extend(
+            score_trace_path_with_baseline(
+                trace_path,
                 baseline_records=resolved_baseline_records,
             )
-        findings.extend(trace_findings)
-        if resolved_baseline_records is not None:
-            findings.extend(
-                score_trace_differential_records(
-                    case_records,
-                    resolved_baseline_records,
-                )
-            )
+        )
     elif not findings:
         findings.append(Finding("empty-trace", "headless run finished without a non-empty trace"))
 
