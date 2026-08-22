@@ -4,7 +4,7 @@
   baseline corpus.
 - [x] Produce a deterministic headless baseline trace from fixed seed, stage,
   and actions.
-- [ ] Add a fuzz-only resource override path for headless execution so ECL
+- [x] Add a fuzz-only resource override path for headless execution so ECL
   mutations do not require rebuilding a DAT archive for each run.
 - [ ] Parse ECL into a first-pass IR, serialize back to bytes, and generate
   targeted edge-case mutants.
@@ -16,6 +16,7 @@
   workers.
 
 Current repository work covers scaffolding plus the first-pass extraction,
-baseline orchestration, IR, mutation, and semantic scoring utilities. The
-current deterministic headless baseline is Stage 6, Lunatic, Reimu A, seed 7,
-600 ticks, fixed action file, with identical trace hashes across two runs.
+baseline orchestration, headless resource override, IR, mutation, and semantic
+scoring utilities. The current deterministic headless baseline is Stage 6,
+Lunatic, Reimu A, seed 7, 600 ticks, fixed action file, with identical trace
+hashes across two runs.

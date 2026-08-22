@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 
@@ -55,6 +56,7 @@ def run_baseline(
     *,
     binary: Path,
     game_dir: Path,
+    resource_override_dir: Path | None,
     stage: int,
     seed: int,
     action_file: Path,
@@ -71,6 +73,8 @@ def run_baseline(
         raise FileNotFoundError(f"missing headless binary: {binary}")
     if not game_dir.is_dir():
         raise FileNotFoundError(f"missing game directory: {game_dir}")
+    if resource_override_dir is not None and not resource_override_dir.is_dir():
+        raise FileNotFoundError(f"missing resource override directory: {resource_override_dir}")
     actions = parse_actions_file(action_file)
     ensure_directory(artifact_dir)
     trace_path = artifact_dir / "trace.jsonl"
@@ -100,6 +104,7 @@ def run_baseline(
         "max_ticks": max_ticks,
         "action_file": str(action_file.resolve()),
         "action_count": actions.length,
+        "resource_override_dir": str(resource_override_dir.resolve()) if resource_override_dir is not None else None,
         "trace": str(trace_path.resolve()),
         "command": command,
         "dry_run": dry_run,
@@ -107,7 +112,10 @@ def run_baseline(
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     if dry_run:
         return metadata
-    subprocess.run(command, cwd=game_dir, check=True)
+    run_env = os.environ.copy()
+    if resource_override_dir is not None:
+        run_env["DANMAKUFUZZ_OVERRIDE_DIR"] = str(resource_override_dir.resolve())
+    subprocess.run(command, cwd=game_dir, check=True, env=run_env)
     return metadata
 
 
@@ -119,6 +127,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--actions", type=Path, default=DEFAULT_ACTION_FILE)
     parser.add_argument("--artifact-dir", type=Path)
+    parser.add_argument("--resource-override-dir", type=Path)
     parser.add_argument("--difficulty", type=int, default=3)
     parser.add_argument("--character", type=int, default=0)
     parser.add_argument("--shot-type", type=int, default=0)
@@ -139,6 +148,7 @@ def main() -> int:
     metadata = run_baseline(
         binary=args.headless_bin.resolve(),
         game_dir=args.game_dir.resolve(),
+        resource_override_dir=args.resource_override_dir.resolve() if args.resource_override_dir else None,
         stage=args.stage,
         seed=args.seed,
         action_file=args.actions.resolve(),

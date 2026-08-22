@@ -14,21 +14,30 @@ test case.
 - the patch point stays confined to the headless runtime, not the mutation
   tooling.
 
-## Planned interface
+## Implemented interface
 
-One of the following is acceptable:
-
-- environment variable such as `DANMAKUFUZZ_OVERRIDE_DIR`;
-- explicit CLI option such as `--resource-override-dir`.
+- environment variable `DANMAKUFUZZ_OVERRIDE_DIR` consumed by
+  `third_party/th06-headless/src/FileSystem.cpp`;
+- Python launcher option `--resource-override-dir`, which sets that
+  environment variable for the child process.
 
 Lookup policy:
 
-1. if override directory contains the requested basename, load that file;
-2. otherwise fall back to the normal archive-backed lookup.
+1. if override directory contains the requested relative path, load that file;
+2. otherwise, if override directory contains the requested basename, load that
+   file;
+3. otherwise fall back to the normal archive-backed lookup.
 
 ## Likely patch points
 
-The override should intercept the earliest file-open path that already knows
-the basename requested by the runtime. For the original TH06 code line this is
-the `FileSystem::OpenPath(..., false)` path; for the headless fork the exact
-portable equivalent will be patched inside `third_party/th06-headless/`.
+The override intercepts the existing `FileSystem::OpenPath(..., false)` path
+before archive lookup. That keeps the patch confined to the headless runtime
+and avoids coupling the mutator or corpus code to PBG3 packing.
+
+## Validation note
+
+On August 22, 2026, a Stage 6 run with a zero-byte overridden
+`data/ecldata6.ecl` exited with `SIGSEGV` (exit 139), while the same override
+mechanism pointed at the original extracted `ecldata6.ecl` completed normally.
+So the override path is live and already yielded a first malformed-ECL crash
+case worth minimizing.
