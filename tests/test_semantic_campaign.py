@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from danmakufuzz.interestingness.rules import Finding
+from danmakufuzz.semantic.minimize_case import TargetFinding, _ddmin_delete
 from danmakufuzz.semantic.payload_mutants import generate_structural_mutants
 from danmakufuzz.semantic.ecl_campaign import classify_process_result, infer_stage_from_ecl_name
 
@@ -22,3 +24,20 @@ def test_generate_structural_mutants_includes_empty_payload() -> None:
     mutants = generate_structural_mutants(b"\x01\x00\x00\x00" + b"\x00" * 28)
     assert mutants[0].name == "struct-empty-file"
     assert mutants[0].payload == b""
+
+
+def test_target_finding_matches_kind_and_detail() -> None:
+    target = TargetFinding(kind="process-signal", detail="SIGSEGV")
+    assert target.matches([Finding("process-signal", "SIGSEGV")])
+    assert not target.matches([Finding("process-signal", "SIGABRT")])
+
+
+def test_ddmin_delete_reduces_to_single_required_byte() -> None:
+    evaluations = [0]
+    minimized = _ddmin_delete(
+        b"abcXdef",
+        lambda payload: payload.count(b"X") == 1,
+        max_evaluations=64,
+        evaluation_counter=evaluations,
+    )
+    assert minimized == b"X"

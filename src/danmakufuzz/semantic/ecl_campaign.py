@@ -145,6 +145,7 @@ def run_case(
         "command": command,
         "seed_name": seed_name,
         "stage": stage,
+        "cwd": str(game_dir.resolve()),
         "elapsed_seconds": elapsed_seconds,
         "returncode": returncode,
         "timed_out": timed_out,

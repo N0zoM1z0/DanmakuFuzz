@@ -29,3 +29,10 @@ Each case gets its own ignored artifact directory containing:
 - a `result.json` summary.
 
 The campaign root also writes `summary.jsonl` and `campaign.json`.
+
+Minimize a captured interesting case with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.minimize_case \
+  --result artifacts/semantic/.../result.json
+```
