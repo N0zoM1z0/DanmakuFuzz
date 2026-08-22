@@ -24,6 +24,7 @@ TARGET_PATH = (0, 0)
 TARGET_OPCODE = 97
 TARGET_ORIGINAL_TIME = 0
 TARGET_ORIGINAL_SKIP = 255
+TARGET_MIN_ARGS = 4
 HEADLESS_SEED = 7
 MAX_TICKS = 600
 TIMEOUT_SECONDS = 5.0
@@ -247,6 +248,14 @@ POSITIVES = (
         "family": "difficulty-mask",
     },
     {
+        "name": "stage1-generic-arg0-neg289",
+        "stage": 1,
+        "patch": "payload_stage1_generic_arg0_neg289.json",
+        "payload_sha256": "7a3f8778f18ac69c39d36246526862ef6b28ae7469c3f25fef78f1085f6229f1",
+        "updates": {"raw_arg0_i32": -289},
+        "family": "generic-arg32",
+    },
+    {
         "name": "stage2-instruction-time-4096",
         "stage": 2,
         "patch": "payload_stage2_instruction_time_4096.json",
@@ -269,6 +278,14 @@ POSITIVES = (
         "payload_sha256": "740e942c8b042cc2d7cd1aed7573db0a2496a87e274e15582993e9aef629efb3",
         "updates": {"skip_for_difficulty": 96},
         "family": "difficulty-mask",
+    },
+    {
+        "name": "stage2-generic-arg0-neg24",
+        "stage": 2,
+        "patch": "payload_stage2_generic_arg0_neg24.json",
+        "payload_sha256": "0633ab1f10bda1ef29a764ce47d20b1288dc38cbe8cd9b17385df929d7f92bec",
+        "updates": {"raw_arg0_i32": -24},
+        "family": "generic-arg32",
     },
     {
         "name": "stage3-instruction-time-4096",
@@ -295,6 +312,14 @@ POSITIVES = (
         "family": "difficulty-mask",
     },
     {
+        "name": "stage3-generic-arg0-neg24",
+        "stage": 3,
+        "patch": "payload_stage3_generic_arg0_neg24.json",
+        "payload_sha256": "9a6eb2bba8b97492dbdeedbe20a5b481ce5f1941fbc33624d66e992d64b797f8",
+        "updates": {"raw_arg0_i32": -24},
+        "family": "generic-arg32",
+    },
+    {
         "name": "stage4-instruction-time-4096",
         "stage": 4,
         "patch": "payload_stage4_instruction_time_4096.json",
@@ -317,6 +342,14 @@ POSITIVES = (
         "payload_sha256": "b73b50b67b279d1521fb30920344256ccf6f44e1be9db66ea469192b97c0844a",
         "updates": {"skip_for_difficulty": 96},
         "family": "difficulty-mask",
+    },
+    {
+        "name": "stage4-generic-arg0-neg24",
+        "stage": 4,
+        "patch": "payload_stage4_generic_arg0_neg24.json",
+        "payload_sha256": "239321fb4a8aed019b08984870153e4027b41bf08bdfdf693641da8ac5f22577",
+        "updates": {"raw_arg0_i32": -24},
+        "family": "generic-arg32",
     },
     {
         "name": "stage5-instruction-time-4096",
@@ -342,12 +375,21 @@ POSITIVES = (
         "updates": {"skip_for_difficulty": 96},
         "family": "difficulty-mask",
     },
+    {
+        "name": "stage5-generic-arg0-neg24",
+        "stage": 5,
+        "patch": "payload_stage5_generic_arg0_neg24.json",
+        "payload_sha256": "c76cbdc746d4404ff122cc18c10576cc974ca3b6b63e8b55869a921cf48e570c",
+        "updates": {"raw_arg0_i32": -24},
+        "family": "generic-arg32",
+    },
 )
 
 NEGATIVE_CONTROLS = (
     {"name": "stage6-instruction-time-4096", "updates": {"time": 4096}},
     {"name": "stage6-instruction-time-2147483602", "updates": {"time": 2147483602}},
     {"name": "stage6-difficulty-mask-96", "updates": {"skip_for_difficulty": 96}},
+    {"name": "stage6-generic-arg0-neg24", "updates": {"raw_arg0_i32": -24}},
 )
 
 
@@ -427,6 +469,14 @@ def _ordered_findings(result: dict[str, object]) -> list[dict[str, str]]:
     return ordered
 
 
+def _replace_i32(data: bytes, offset: int, value: int) -> bytes:
+    if offset < 0 or offset + 4 > len(data):
+        raise ValueError(f"i32 replacement offset is outside args: offset={offset} len={len(data)}")
+    payload = bytearray(data)
+    payload[offset:offset + 4] = int(value).to_bytes(4, "little", signed=True)
+    return bytes(payload)
+
+
 def _exact_payload(stage: int, updates: dict[str, int]) -> bytes:
     seed_path = _seed_path(stage)
     canonical_seed_payload = serialize_ecl(parse_ecl(seed_path.read_bytes()))
@@ -445,7 +495,16 @@ def _exact_payload(stage: int, updates: dict[str, int]) -> bytes:
         raise RuntimeError(
             f"stage {stage} target difficulty mask drifted: expected {TARGET_ORIGINAL_SKIP}, got {instruction.skip_for_difficulty}"
         )
-    mutated = RawInstruction(**{**instruction.__dict__, **updates})
+    raw_arg0_i32 = updates.get("raw_arg0_i32")
+    direct_updates = {key: value for key, value in updates.items() if key != "raw_arg0_i32"}
+    mutated_args = instruction.args
+    if raw_arg0_i32 is not None:
+        if len(mutated_args) < TARGET_MIN_ARGS:
+            raise RuntimeError(
+                f"stage {stage} target args drifted: expected at least {TARGET_MIN_ARGS} bytes, got {len(mutated_args)}"
+            )
+        mutated_args = _replace_i32(mutated_args, 0, int(raw_arg0_i32))
+    mutated = RawInstruction(**{**instruction.__dict__, **direct_updates, "args": mutated_args})
     seed_ecl.subs[sub_index].instructions[instruction_index] = mutated
     return serialize_ecl(seed_ecl)
 

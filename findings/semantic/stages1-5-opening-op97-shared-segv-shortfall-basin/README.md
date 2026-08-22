@@ -3,7 +3,7 @@
 Observed on August 22, 2026.
 
 This finding comes from the widened generic exploration lane after adding
-shared instruction-field and difficulty-mask mutators.
+shared instruction-field, difficulty-mask, and generic raw-argument mutators.
 
 Across `ecldata1.ecl` through `ecldata5.ecl`, the opening site
 `(sub=0, instruction=0)` is the same opcode `97` with:
@@ -11,16 +11,26 @@ Across `ecldata1.ecl` through `ecldata5.ecl`, the opening site
 - `time = 0`
 - `skip_for_difficulty = 255`
 
-Three exact mutations at that one site collapse into the same crash trace for
-each stage:
+At least three distinct mutator families collapse into the same crash trace at
+that one site:
 
 - `instruction_time = 4096`
 - `instruction_time = 2147483602`
 - `difficulty_mask = 96`
+- raw `arg0` negative values via `generic-arg32`
+
+The tracked exact payloads are:
+
+- Stage 1: `arg0 = -289`
+- Stages 2-5: `arg0 = -24`
+
+The wider exploration artifact also saw additional raw-arg aliases land in the
+same basin (`-1011` on Stages 2-3 and `-1012` on Stages 4-5), but the tracked
+finding keeps one canonical generic payload per stage.
 
 The collapse is exact, not just “same finding kind”.
 
-For each stage, all three payloads reproduce:
+For each stage, every tracked positive payload reproduces:
 
 - the same `SIGSEGV`;
 - the same `trace-shortfall` count relative to the stage baseline;
@@ -46,10 +56,11 @@ field families at the same opening opcode all collapse into one deterministic
 stage-local crash basin.
 
 There is also a useful negative control. Stage 6 still has opcode `97` at the
-same path `(sub=0, instruction=0)`, but these three exact edits do not become
+same path `(sub=0, instruction=0)`, but the tracked time, difficulty-mask, and
+generic-arg exact edits do not become
 interesting there under the same headless setup.
 
-Rebuild and rerun all fifteen positive payloads, plus the Stage 6 negative
+Rebuild and rerun all twenty positive payloads, plus the Stage 6 negative
 controls, with:
 
 ```sh
@@ -87,18 +98,23 @@ Tracked compact payload patches:
 - `payload_stage1_instruction_time_4096.json`
 - `payload_stage1_instruction_time_2147483602.json`
 - `payload_stage1_difficulty_mask_96.json`
+- `payload_stage1_generic_arg0_neg289.json`
 - `payload_stage2_instruction_time_4096.json`
 - `payload_stage2_instruction_time_2147483602.json`
 - `payload_stage2_difficulty_mask_96.json`
+- `payload_stage2_generic_arg0_neg24.json`
 - `payload_stage3_instruction_time_4096.json`
 - `payload_stage3_instruction_time_2147483602.json`
 - `payload_stage3_difficulty_mask_96.json`
+- `payload_stage3_generic_arg0_neg24.json`
 - `payload_stage4_instruction_time_4096.json`
 - `payload_stage4_instruction_time_2147483602.json`
 - `payload_stage4_difficulty_mask_96.json`
+- `payload_stage4_generic_arg0_neg24.json`
 - `payload_stage5_instruction_time_4096.json`
 - `payload_stage5_instruction_time_2147483602.json`
 - `payload_stage5_difficulty_mask_96.json`
+- `payload_stage5_generic_arg0_neg24.json`
 
 Current local evidence:
 
@@ -119,8 +135,9 @@ Current local evidence:
 Current interpretation:
 
 - headless: clearly interesting and reproducible;
-- the fun part is the cross-family convergence: two exact time edits and one
-  exact difficulty-mask edit all land in the same opening crash basin;
+- the fun part is the cross-family convergence: two exact time edits, one
+  exact difficulty-mask edit, and one canonical raw-arg negative edit per
+  stage all land in the same opening crash basin;
 - Stage 6 staying clean under the same edits suggests this is a real
   stage-clustered structural weakness, not a universal “mutate anything and
   crash” story;
