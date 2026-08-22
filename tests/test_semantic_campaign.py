@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from danmakufuzz.ecl_ir.model import EclFile, EclSubroutine, RawInstruction
+from danmakufuzz.ecl_ir.mutators import generate_targeted_mutants
 from danmakufuzz.interestingness.rules import Finding
 from danmakufuzz.semantic.minimize_case import TargetFinding, _ddmin_delete
 from danmakufuzz.semantic.payload_mutants import generate_structural_mutants
@@ -41,3 +43,42 @@ def test_ddmin_delete_reduces_to_single_required_byte() -> None:
         evaluation_counter=evaluations,
     )
     assert minimized == b"X"
+
+
+def test_generate_targeted_mutants_includes_semantic_interval_and_move_time_mutants() -> None:
+    ecl = EclFile(
+        sub_count=1,
+        main_count=0,
+        timeline_offsets=(0, 0, 0),
+        timeline=[],
+        subs=[
+            EclSubroutine(
+                file_offset=0,
+                instructions=[
+                    RawInstruction(
+                        time=0,
+                        opcode=76,
+                        offset_to_next=16,
+                        unk8=0,
+                        skip_for_difficulty=0,
+                        unk_a=0,
+                        unk_b=0,
+                        args=(5).to_bytes(4, "little", signed=True),
+                    ),
+                    RawInstruction(
+                        time=0,
+                        opcode=57,
+                        offset_to_next=28,
+                        unk8=0,
+                        skip_for_difficulty=0,
+                        unk_a=0,
+                        unk_b=0,
+                        args=b"\x00" * 16,
+                    ),
+                ],
+            )
+        ],
+    )
+    names = {mutant.name for mutant in generate_targeted_mutants(ecl)}
+    assert {"shoot-interval-zero", "shoot-interval-one", "shoot-interval-negative-one"} <= names
+    assert {"move-time-zero", "move-time-negative-one"} <= names

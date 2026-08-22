@@ -9,8 +9,8 @@ import signal
 import subprocess
 import time
 
-from ..headless.baseline import DEFAULT_ACTION_FILE, DEFAULT_GAME_DIR, build_command, default_headless_binary
-from ..interestingness.rules import Finding, score_trace
+from ..headless.baseline import DEFAULT_ACTION_FILE, DEFAULT_GAME_DIR, build_command, default_headless_binary, run_baseline
+from ..interestingness.rules import Finding, score_trace, score_trace_differential
 from ..repo import ARTIFACTS_DIR, REFERENCE_DIR, ensure_directory
 from .payload_mutants import PayloadMutant, generate_payload_mutants
 
@@ -84,6 +84,7 @@ def run_case(
     seed_name: str,
     mutant: PayloadMutant,
     case_index: int,
+    baseline_trace: Path | None = None,
 ) -> dict[str, object]:
     case_name = slugify_case_name(mutant, case_index)
     case_dir = campaign_dir / case_name
@@ -130,6 +131,8 @@ def run_case(
     findings = classify_process_result(returncode, timed_out=timed_out)
     if trace_path.exists() and trace_path.stat().st_size > 0:
         findings.extend(score_trace(trace_path))
+        if baseline_trace is not None and baseline_trace.is_file():
+            findings.extend(score_trace_differential(trace_path, baseline_trace))
     elif not findings:
         findings.append(Finding("empty-trace", "headless run finished without a non-empty trace"))
 
@@ -194,6 +197,25 @@ def main() -> int:
         ARTIFACTS_DIR / "semantic" / f"{args.case_prefix}-stage{stage}-seed{args.seed}-{seed_ecl.stem}"
     )
     ensure_directory(artifact_dir)
+    baseline_artifact_dir = artifact_dir / "_baseline"
+    baseline_metadata = run_baseline(
+        binary=args.headless_bin.resolve(),
+        game_dir=args.game_dir.resolve(),
+        resource_override_dir=None,
+        stage=stage,
+        seed=args.seed,
+        action_file=args.actions.resolve(),
+        artifact_dir=baseline_artifact_dir.resolve(),
+        difficulty=args.difficulty,
+        character=args.character,
+        shot_type=args.shot_type,
+        max_ticks=args.max_ticks,
+        auto_shoot=args.auto_shoot,
+        continue_after_hit=args.continue_after_hit,
+        dry_run=False,
+    )
+    baseline_trace_value = baseline_metadata.get("trace")
+    baseline_trace = Path(baseline_trace_value) if isinstance(baseline_trace_value, str) else None
 
     seed_payload = seed_ecl.read_bytes()
     mutants = generate_payload_mutants(seed_payload, include_structural=not args.no_structural)
@@ -223,6 +245,7 @@ def main() -> int:
                 seed_name=seed_ecl.name,
                 mutant=mutant,
                 case_index=case_index,
+                baseline_trace=baseline_trace,
             )
             totals["cases"] += 1
             totals["interesting"] += int(bool(result["interesting"]))

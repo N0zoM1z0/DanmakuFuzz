@@ -8,8 +8,12 @@ from .model import EclFile, EclSubroutine, RawInstruction
 OP_JUMP = 2
 OP_JUMPDEC = 3
 OP_CALL = 35
+OP_MOVE_TIME_FIRST = 52
+OP_MOVE_TIME_LAST = 60
 OP_BULLETFANAIMED = 67
 OP_BULLETRANDOM = 75
+OP_SHOOTINTERVAL = 76
+OP_SHOOTINTERVALDELAYED = 77
 OP_LASERROTATE = 88
 OP_LASERROTATEFROMPLAYER = 89
 OP_LASEROFFSET = 90
@@ -97,8 +101,27 @@ def generate_targeted_mutants(ecl: EclFile) -> list[Mutant]:
                         ecl, sub_index, instruction_index,
                         RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
                     )))
+            if OP_MOVE_TIME_FIRST <= instruction.opcode <= OP_MOVE_TIME_LAST and len(instruction.args) >= 4:
+                for name, value in (
+                    ("move-time-zero", 0),
+                    ("move-time-negative-one", -1),
+                ):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
+                    )))
             if instruction.opcode == OP_ANMSETSLOT and len(instruction.args) >= 4:
                 for name, value in (("anm-slot-8", 8), ("anm-slot-255", 255)):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
+                    )))
+            if instruction.opcode in {OP_SHOOTINTERVAL, OP_SHOOTINTERVALDELAYED} and len(instruction.args) >= 4:
+                for name, value in (
+                    ("shoot-interval-zero", 0),
+                    ("shoot-interval-one", 1),
+                    ("shoot-interval-negative-one", -1),
+                ):
                     mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
                         ecl, sub_index, instruction_index,
                         RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})

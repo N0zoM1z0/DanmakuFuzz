@@ -11,7 +11,7 @@ import time
 from typing import Callable
 
 from ..headless.baseline import DEFAULT_GAME_DIR
-from ..interestingness.rules import Finding, score_trace
+from ..interestingness.rules import Finding, score_trace, score_trace_differential
 from ..repo import ARTIFACTS_DIR, ensure_directory
 from .ecl_campaign import classify_process_result
 
@@ -72,6 +72,11 @@ def _load_case_result(result_path: Path) -> dict[str, object]:
     return data
 
 
+def _campaign_baseline_trace(result_path: Path) -> Path | None:
+    candidate = result_path.parent.parent / "_baseline" / "trace.jsonl"
+    return candidate if candidate.is_file() else None
+
+
 def _target_from_case_result(case_result: dict[str, object], *, kind: str | None, detail: str | None) -> TargetFinding:
     if kind is not None:
         return TargetFinding(kind=kind, detail=detail)
@@ -93,6 +98,7 @@ def evaluate_payload(
     seed_name: str,
     work_dir: Path,
     timeout_seconds: float,
+    baseline_trace: Path | None = None,
 ) -> CandidateResult:
     ensure_directory(work_dir)
     override_dir = work_dir / "override"
@@ -128,6 +134,8 @@ def evaluate_payload(
     findings = classify_process_result(returncode, timed_out=timed_out)
     if trace_path.exists() and trace_path.stat().st_size > 0:
         findings.extend(score_trace(trace_path))
+        if baseline_trace is not None and baseline_trace.is_file():
+            findings.extend(score_trace_differential(trace_path, baseline_trace))
     elif not findings:
         findings.append(Finding("empty-trace", "headless run finished without a non-empty trace"))
 
@@ -266,6 +274,7 @@ def main() -> int:
     payload_path = _payload_path_from_case_result(case_result, result_path)
     original_payload = payload_path.read_bytes()
     target = _target_from_case_result(case_result, kind=args.match_kind, detail=args.match_detail)
+    baseline_trace = _campaign_baseline_trace(result_path)
     artifact_dir = args.artifact_dir or (
         ARTIFACTS_DIR / "semantic-minimized" / result_path.parent.name
     )
@@ -284,6 +293,7 @@ def main() -> int:
             seed_name=seed_name,
             work_dir=work_dir,
             timeout_seconds=args.timeout_seconds,
+            baseline_trace=baseline_trace,
         )
         matched = target.matches(list(result.findings))
         history.append(
@@ -315,6 +325,7 @@ def main() -> int:
         seed_name=seed_name,
         work_dir=final_dir,
         timeout_seconds=args.timeout_seconds,
+        baseline_trace=baseline_trace,
     )
     final_payload_path = final_dir / "override" / "data" / seed_name
     summary = {
