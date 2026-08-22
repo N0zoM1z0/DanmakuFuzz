@@ -50,6 +50,8 @@ Current local evidence:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-site-basins/20260822T-stage6-lifecb-a/summary.json`
 - dedicated finding rerun with the fixed active-override staging path:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-life-callback-threshold-next-time-zero-tail/summary.json`
+- August 22, 2026 retail smoke:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-life-callback-threshold-next-time-zero-tail/retail/report.json`
 
 Why this one matters:
 
@@ -65,7 +67,9 @@ Current interpretation:
   override staging path;
 - the visible gameplay state at tick `1800` is unchanged except for the
   timeline tail, which makes this a good “quiet corruption” representative;
-- retail: optional only for now; the headless reproducer is the main proof;
+- retail: the August 22, 2026 smoke reached `game-window-live`, changed
+  `149340 / 786432` pixels during the progress probe
+  (`0.1898956298828125`), and did not produce a Wine crash signature;
 - note: the interesting claim here is specifically the stable `next_time=0`
   tail. The older `next_time=32679` artifact was useful for diagnosing the
   harness, but it is no longer treated as a trustworthy semantic finding.
