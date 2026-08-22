@@ -47,6 +47,16 @@ PYTHONPATH=src python3 -m danmakufuzz.retail.confirm_case \
   --dry-run
 ```
 
+Batch replay minimized or semantic results through the retail runner with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
+  --from-minimized \
+  --practice-stage 6 \
+  --difficulty 3 \
+  --timeout-seconds 20
+```
+
 Drive one Stage 6 semantic case into retail Practice Lunatic / Reimu A with:
 
 ```sh

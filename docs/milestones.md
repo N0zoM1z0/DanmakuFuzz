@@ -30,6 +30,7 @@ Wine prefix, normalize the retail cfg for Xvfb, restore the local full-unlock
 `score.dat`, and drive Reimu A Practice Stage 1--6 from either semantic
 `result.json` or minimized `summary.json`. The retail runner now also records
 window-census evidence and auto-classifies at least `crash-dialog` versus
-`game-window-live`. Milestone 7 remains open until the runner can batch replay
-minimized interesting cases and classify them with a tighter oracle than the
-current window/dialog layer.
+`game-window-live`. A thin batch wrapper can now replay multiple semantic or
+minimized cases through the same retail path and aggregate classifications into
+`results.jsonl` / `summary.json`. Milestone 7 remains open until the retail
+oracle grows beyond the current window/dialog layer.

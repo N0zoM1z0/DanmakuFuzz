@@ -25,6 +25,10 @@ Retail state must stay isolated:
 - rebuilds the stage DAT archive with one replacement `ecldata*.ecl` payload;
 - initializes a dedicated Wine prefix and can either stop at launch or drive Practice mode.
 
+`danmakufuzz.retail.batch_confirm` is the thin batch wrapper around that single-case runner.
+It discovers `result.json` / `summary.json` inputs, runs them sequentially in isolated
+artifact-local workers, and emits a batch-level `summary.json` plus `results.jsonl`.
+
 Supported inputs:
 
 - a semantic campaign `result.json`;
@@ -57,6 +61,17 @@ PYTHONPATH=src python3 -m danmakufuzz.retail.confirm_case \
   --timeout-seconds 20
 ```
 
+Example batch replay over minimized cases, stopping on the first retail crash dialog:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
+  --from-minimized \
+  --practice-stage 6 \
+  --difficulty 3 \
+  --timeout-seconds 20 \
+  --stop-on-classification crash-dialog
+```
+
 Each run writes an isolated artifact directory containing:
 
 - `game/` with patched retail archives;
@@ -65,6 +80,12 @@ Each run writes an isolated artifact directory containing:
 - `control-*.png` screenshots when Practice automation runs;
 - `control-window-census.json`, `control-window-names.txt`, and `control-xwininfo.txt` for post-start retail UI evidence;
 - `report.json` with payload hash, patched archive hash, and launch result.
+
+The batch wrapper writes a parent artifact directory containing:
+
+- one child artifact directory per case;
+- `results.jsonl` with one summary row per replayed case;
+- `summary.json` with aggregated classification counts and per-case locations.
 
 ## Current limitation
 
@@ -94,4 +115,4 @@ The remaining missing pieces are:
 
 - route-play automation;
 - tighter oracles than window/dialog sensing;
-- automatic replay of minimized interesting cases instead of one-off manual runs.
+- richer prioritization around which minimized cases to replay first.
