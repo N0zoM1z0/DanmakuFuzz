@@ -64,12 +64,19 @@ Prepare the headless dependency:
 scripts/build_headless.sh
 ```
 
+Create an isolated local retail game directory from any owned extracted TH06
+directory:
+
+```bash
+scripts/bootstrap_game_dir.sh /path/to/extracted/th06
+```
+
 Run a deterministic baseline trace once the headless runtime and retail game
 directory are available:
 
 ```bash
 python -m danmakufuzz.headless.baseline \
-  --game-dir /path/to/th06 \
+  --game-dir reference/retail/game/th06 \
   --stage 6 \
   --seed 7
 ```
