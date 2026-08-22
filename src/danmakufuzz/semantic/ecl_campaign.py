@@ -175,6 +175,8 @@ def resolve_campaign_profile(
     resolved_timeout = timeout_seconds
     resolved_continue_after_hit = continue_after_hit
     resolved_case_prefix = case_prefix
+    if resolved_action_file == DEFAULT_ACTION_FILE.resolve() and resolved_max_ticks > 600:
+        resolved_action_file = LONG_ACTION_FILE
     if profile == "core":
         if resolved_case_prefix == "campaign":
             resolved_case_prefix = "core"

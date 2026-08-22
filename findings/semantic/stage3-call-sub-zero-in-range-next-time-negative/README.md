@@ -15,6 +15,12 @@ enters an impossible timeline state:
 - the trigger is not an obviously out-of-range subroutine index: the mutated
   value `0` is in range for the file's `35` subroutines.
 
+This exact reproducer is also now backed by a broader Stage 3 family sweep: on
+August 22, 2026, a dedicated `call-sub` exploration sweep over TH06 stages
+`1..6` found `11/12` interesting Stage 3 call-site/value pairs collapsing into
+the same `ecl_timeline.next_time=-9163` sink, while stages `1`, `2`, `4`, `5`,
+and `6` stayed at `0/12`.
+
 Rebuild the triggering payload from the local baseline corpus and rerun the
 headless differential check with:
 
@@ -53,6 +59,10 @@ Current local evidence:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage3-call-sub-zero-a/summary.json`
 - retail confirmation smoke:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage3-call-sub-zero-a/retail/report.json`
+- dedicated Stage 3 `call-sub` family sweep:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-call-sub-portable-explore-a/summary.json`
+- Stage 3 `call-sub` hotspot basin summary:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/stage3-call-sub-portable-explore-a/summary.json`
 
 Why this one matters:
 
@@ -60,6 +70,8 @@ Why this one matters:
   past-end / max-i32` template set;
 - it demonstrates that a valid in-range call target can still corrupt timeline
   scheduler state;
+- it serves as one stable concrete reproducer for a much wider Stage 3
+  `call-sub` basin, instead of a one-off magic constant;
 - it is a useful bridge case between “obviously malformed call target” and
   “plausible-but-weird stage script control flow.”
 
@@ -71,3 +83,6 @@ Current interpretation:
 - note: the current retail probe confirms that the rebuilt payload loads and
   advances in Practice Stage 3 under Wine, but it does not yet introspect the
   later negative `ecl_timeline.next_time` state directly.
+- note: the newer family sweep suggests this reproducer is a representative of a
+  Stage 3-specific `call-sub` structural weakness, not a TH06-wide `call-sub`
+  behavior.
