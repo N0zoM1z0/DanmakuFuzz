@@ -129,20 +129,89 @@ BOSS_HEALTH_DRIFT_PATHS = (
     ("boss_ui", "health1"),
     ("boss_ui", "health2"),
 )
+STAGE_VM_DRIFT_FIELDS = (
+    ("loaded", "stage_vm.loaded"),
+    ("script_time", "stage_vm.script_time"),
+    ("instruction_index", "stage_vm.instruction_index"),
+    ("unpause_flag", "stage_vm.unpause_flag"),
+    ("spellcard_state", "stage_vm.spellcard_state"),
+    ("spellcard_ticks", "stage_vm.spellcard_ticks"),
+)
+ECL_TIMELINE_DRIFT_FIELDS = (
+    ("time", "ecl_timeline.time"),
+    ("next_time", "ecl_timeline.next_time"),
+)
+BOSS_UI_DRIFT_FIELDS = (
+    ("present", "boss_ui.present"),
+    ("ecl_lives", "boss_ui.ecl_lives"),
+    ("spell_seconds", "boss_ui.spell_seconds"),
+    ("opacity", "boss_ui.opacity"),
+)
+SPELLCARD_DRIFT_FIELDS = (
+    ("active", "spellcard.active"),
+    ("capturing", "spellcard.capturing"),
+    ("used_bomb", "spellcard.used_bomb"),
+    ("idx", "spellcard.idx"),
+    ("capture_score", "spellcard.capture_score"),
+)
+BOSS_HEALTH_DRIFT_FIELDS = (
+    ("health1", "boss_ui.health1"),
+    ("health2", "boss_ui.health2"),
+)
 
 
 def _walk_numbers(value: Any, findings: list[Finding], path: str = "$") -> None:
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            findings.append(Finding("non-finite", f"{path}={value!r}"))
-        return
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            _walk_numbers(nested, findings, f"{path}.{key}")
-        return
-    if isinstance(value, list):
-        for index, nested in enumerate(value):
-            _walk_numbers(nested, findings, f"{path}[{index}]")
+    stack: list[tuple[str, Any]] = [(path, value)]
+    while stack:
+        current_path, current = stack.pop()
+        if isinstance(current, float):
+            if not math.isfinite(current):
+                findings.append(Finding("non-finite", f"{current_path}={current!r}"))
+            continue
+        if isinstance(current, dict):
+            for key, nested in current.items():
+                if isinstance(nested, float):
+                    if not math.isfinite(nested):
+                        findings.append(Finding("non-finite", f"{current_path}.{key}={nested!r}"))
+                elif isinstance(nested, (dict, list)):
+                    stack.append((f"{current_path}.{key}", nested))
+            continue
+        if isinstance(current, list):
+            for index, nested in enumerate(current):
+                if isinstance(nested, float):
+                    if not math.isfinite(nested):
+                        findings.append(Finding("non-finite", f"{current_path}[{index}]={nested!r}"))
+                elif isinstance(nested, (dict, list)):
+                    stack.append((f"{current_path}[{index}]", nested))
+
+
+def _mapping_drift_detail(
+    baseline_mapping: Any,
+    case_mapping: Any,
+    fields: tuple[tuple[str, str], ...],
+    *,
+    numeric_threshold: float | None = None,
+) -> str | None:
+    if not isinstance(baseline_mapping, dict) or not isinstance(case_mapping, dict):
+        return None
+    for field_name, label in fields:
+        baseline_value = baseline_mapping.get(field_name)
+        case_value = case_mapping.get(field_name)
+        if baseline_value is None or case_value is None:
+            continue
+        if numeric_threshold is None:
+            if baseline_value != case_value:
+                return f"{label} baseline={baseline_value} case={case_value}"
+            continue
+        if (
+            isinstance(baseline_value, (int, float))
+            and not isinstance(baseline_value, bool)
+            and isinstance(case_value, (int, float))
+            and not isinstance(case_value, bool)
+            and abs(float(baseline_value) - float(case_value)) >= numeric_threshold
+        ):
+            return f"{label} baseline={baseline_value} case={case_value}"
+    return None
 
 
 def _stall_detail(record: dict[str, Any], *, frame: int, stall_window: int) -> str:
@@ -208,9 +277,29 @@ def score_trace_records(
     item_limit: int = 256,
 ) -> list[Finding]:
     findings: list[Finding] = []
-    stall = first_stall_event_records(records, stall_window=stall_window)
+    stall: StallEvent | None = None
+    last_frame: int | None = None
+    repeated_frames = 0
     negative_timeline_next_reported = False
     for line_number, record in enumerate(records, start=1):
+        frame = record.get("frame")
+        if not isinstance(frame, int):
+            frame = record.get("game_frame")
+        if isinstance(frame, int):
+            if last_frame == frame:
+                repeated_frames += 1
+            else:
+                repeated_frames = 0
+            last_frame = frame
+            if stall is None and repeated_frames >= stall_window:
+                tick = record.get("tick")
+                game_frame = record.get("game_frame")
+                stall = StallEvent(
+                    frame=frame,
+                    tick=tick if isinstance(tick, int) else None,
+                    game_frame=game_frame if isinstance(game_frame, int) else None,
+                    detail=_stall_detail(record, frame=frame, stall_window=stall_window),
+                )
         _walk_numbers(record, findings)
         timeline_next_finding = None
         if not negative_timeline_next_reported:
@@ -341,29 +430,37 @@ def score_trace_differential_records(
         tick = case_record.get("tick")
         tick_label = tick if isinstance(tick, int) else line_number
 
-        baseline_bullets = _entity_count(baseline_record, "bullets")
-        case_bullets = _entity_count(case_record, "bullets")
+        baseline_bullets_value = baseline_record.get("bullets")
+        case_bullets_value = case_record.get("bullets")
+        baseline_bullets = len(baseline_bullets_value) if isinstance(baseline_bullets_value, list) else 0
+        case_bullets = len(case_bullets_value) if isinstance(case_bullets_value, list) else 0
         bullet_streak = bullet_streak + 1 if abs(baseline_bullets - case_bullets) >= bullet_drift_threshold else 0
         if bullet_streak >= sustained_window and not saw_bullet_drift:
             findings.append(Finding("bullet-count-drift", f"tick {tick_label} baseline={baseline_bullets} case={case_bullets}"))
             saw_bullet_drift = True
 
-        baseline_enemies = _entity_count(baseline_record, "enemies")
-        case_enemies = _entity_count(case_record, "enemies")
+        baseline_enemies_value = baseline_record.get("enemies")
+        case_enemies_value = case_record.get("enemies")
+        baseline_enemies = len(baseline_enemies_value) if isinstance(baseline_enemies_value, list) else 0
+        case_enemies = len(case_enemies_value) if isinstance(case_enemies_value, list) else 0
         enemy_streak = enemy_streak + 1 if abs(baseline_enemies - case_enemies) >= enemy_drift_threshold else 0
         if enemy_streak >= sustained_window and not saw_enemy_drift:
             findings.append(Finding("enemy-count-drift", f"tick {tick_label} baseline={baseline_enemies} case={case_enemies}"))
             saw_enemy_drift = True
 
-        baseline_lasers = _entity_count(baseline_record, "lasers")
-        case_lasers = _entity_count(case_record, "lasers")
+        baseline_lasers_value = baseline_record.get("lasers")
+        case_lasers_value = case_record.get("lasers")
+        baseline_lasers = len(baseline_lasers_value) if isinstance(baseline_lasers_value, list) else 0
+        case_lasers = len(case_lasers_value) if isinstance(case_lasers_value, list) else 0
         laser_streak = laser_streak + 1 if abs(baseline_lasers - case_lasers) >= laser_drift_threshold else 0
         if laser_streak >= sustained_window and not saw_laser_drift:
             findings.append(Finding("laser-count-drift", f"tick {tick_label} baseline={baseline_lasers} case={case_lasers}"))
             saw_laser_drift = True
 
-        baseline_items = _entity_count(baseline_record, "items")
-        case_items = _entity_count(case_record, "items")
+        baseline_items_value = baseline_record.get("items")
+        case_items_value = case_record.get("items")
+        baseline_items = len(baseline_items_value) if isinstance(baseline_items_value, list) else 0
+        case_items = len(case_items_value) if isinstance(case_items_value, list) else 0
         item_streak = item_streak + 1 if abs(baseline_items - case_items) >= item_drift_threshold else 0
         if item_streak >= sustained_window and not saw_item_drift:
             findings.append(Finding("item-count-drift", f"tick {tick_label} baseline={baseline_items} case={case_items}"))
@@ -402,34 +499,58 @@ def score_trace_differential_records(
                 )
                 saw_point_item_drift = True
 
-        stage_vm_detail = _scalar_drift_detail(baseline_record, case_record, STAGE_VM_DRIFT_PATHS)
+        baseline_stage_vm = baseline_record.get("stage_vm")
+        case_stage_vm = case_record.get("stage_vm")
+        stage_vm_detail = _mapping_drift_detail(
+            baseline_stage_vm,
+            case_stage_vm,
+            STAGE_VM_DRIFT_FIELDS,
+        )
         stage_vm_streak = stage_vm_streak + 1 if stage_vm_detail is not None else 0
         if stage_vm_streak >= sustained_window and not saw_stage_vm_drift:
             findings.append(Finding("stage-script-drift", f"tick {tick_label} {stage_vm_detail}"))
             saw_stage_vm_drift = True
 
-        timeline_detail = _scalar_drift_detail(baseline_record, case_record, ECL_TIMELINE_DRIFT_PATHS)
+        baseline_timeline = baseline_record.get("ecl_timeline")
+        case_timeline = case_record.get("ecl_timeline")
+        timeline_detail = _mapping_drift_detail(
+            baseline_timeline,
+            case_timeline,
+            ECL_TIMELINE_DRIFT_FIELDS,
+        )
         timeline_streak = timeline_streak + 1 if timeline_detail is not None else 0
         if timeline_streak >= sustained_window and not saw_timeline_drift:
             findings.append(Finding("ecl-timeline-drift", f"tick {tick_label} {timeline_detail}"))
             saw_timeline_drift = True
 
-        boss_ui_detail = _scalar_drift_detail(baseline_record, case_record, BOSS_UI_DRIFT_PATHS)
+        baseline_boss_ui = baseline_record.get("boss_ui")
+        case_boss_ui = case_record.get("boss_ui")
+        boss_ui_detail = _mapping_drift_detail(
+            baseline_boss_ui,
+            case_boss_ui,
+            BOSS_UI_DRIFT_FIELDS,
+        )
         boss_ui_streak = boss_ui_streak + 1 if boss_ui_detail is not None else 0
         if boss_ui_streak >= sustained_window and not saw_boss_ui_drift:
             findings.append(Finding("boss-ui-drift", f"tick {tick_label} {boss_ui_detail}"))
             saw_boss_ui_drift = True
 
-        spellcard_detail = _scalar_drift_detail(baseline_record, case_record, SPELLCARD_DRIFT_PATHS)
+        baseline_spellcard = baseline_record.get("spellcard")
+        case_spellcard = case_record.get("spellcard")
+        spellcard_detail = _mapping_drift_detail(
+            baseline_spellcard,
+            case_spellcard,
+            SPELLCARD_DRIFT_FIELDS,
+        )
         spellcard_streak = spellcard_streak + 1 if spellcard_detail is not None else 0
         if spellcard_streak >= sustained_window and not saw_spellcard_drift:
             findings.append(Finding("spellcard-drift", f"tick {tick_label} {spellcard_detail}"))
             saw_spellcard_drift = True
 
-        boss_health_detail = _scalar_drift_detail(
-            baseline_record,
-            case_record,
-            BOSS_HEALTH_DRIFT_PATHS,
+        boss_health_detail = _mapping_drift_detail(
+            baseline_boss_ui,
+            case_boss_ui,
+            BOSS_HEALTH_DRIFT_FIELDS,
             numeric_threshold=0.01,
         )
         boss_health_streak = boss_health_streak + 1 if boss_health_detail is not None else 0
