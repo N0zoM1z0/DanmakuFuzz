@@ -14,6 +14,13 @@ Separately, the dedicated `call-sub-zero` finding has already shown that a
 third family, `call-sub`, can reach the same sink signature under its own
 stable reproducer.
 
+After widening the generic exploration lane on August 22, 2026, the broader
+portable core sweep also added `bullet-count2` to the same Stage 3 sink family.
+The current compact reproducer in this directory still tracks the two stable
+generic representatives above, but the wider artifact evidence now shows that
+the basin is at least four-family: `call-sub`, `bullet-count1`,
+`bullet-count2`, and `shoot-interval`.
+
 Even though those mutations touch different opcodes and fields, all three runs
 collapse into the same normalized sink snapshot:
 
@@ -50,6 +57,12 @@ Current local evidence:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/portable-core-explore-c/summary.json`
 - broader portable core trace basin summary:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/portable-core-explore-c/summary.json`
+- widened portable core exploration sweep after site-level exploration reorder:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-portable-core-explore-d/summary.json`
+- widened portable core hotspot summary:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/portable-core-explore-d/summary.json`
+- widened portable core trace basin summary:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/portable-core-explore-d/summary.json`
 - dedicated call-sub representative finding:
   `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage3-call-sub-zero-in-range-next-time-negative/README.md`
 
@@ -66,6 +79,9 @@ Current interpretation:
 
 - headless: clearly interesting and reproducible;
 - the basin is cross-family inside Stage 3, not `call-sub`-only;
+- the August 22, 2026 widened sweep shows that `bullet-count2` also lands in
+  the same sink, so the generic basin is broader than the original two-payload
+  reproducer alone proves;
 - note: the headless path is somewhat layout-sensitive, so the reproducer uses
   isolated worker copies and a bounded retry loop instead of assuming one-shot
   determinism;

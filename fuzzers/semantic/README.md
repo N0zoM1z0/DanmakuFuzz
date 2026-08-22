@@ -40,6 +40,11 @@ also mixes context-aware, relative, scaled, bit-flip, and wide random values.
 Use `--random-seed` to roam the sampler and `--samples-per-site` to control the
 per-site fanout without changing the surrounding campaign logic.
 
+When the campaign uses `selection_mode=site`, the exploration lane now also
+reorders mutants inside each ECL site before limit-based selection. This avoids
+the older append-order bias where low `--limit` runs mostly exercised the first
+family/value emitted per site, which was too close to template testing.
+
 Sweep that reusable family set across the playable retail seeds with:
 
 ```sh

@@ -291,6 +291,62 @@ def _site_rng(
     return random.Random(int.from_bytes(digest[:8], "little", signed=False))
 
 
+def _mutant_family_key(mutant: Mutant) -> str:
+    metadata = mutant.metadata or {}
+    family = metadata.get("family")
+    if isinstance(family, str) and family:
+        return family
+    parts = [part for part in mutant.name.split("-") if part]
+    if len(parts) >= 2:
+        return "-".join(parts[:2])
+    return mutant.name
+
+
+def _reorder_site_mutants(
+    mutants: list[Mutant],
+    *,
+    random_seed: int,
+    opcode: int,
+    sub_index: int,
+    instruction_index: int,
+) -> list[Mutant]:
+    if len(mutants) <= 1:
+        return mutants
+
+    rng = _site_rng(
+        random_seed,
+        opcode=opcode,
+        sub_index=sub_index,
+        instruction_index=instruction_index,
+        family="site-order",
+    )
+    family_buckets: dict[str, list[Mutant]] = {}
+    family_order: list[str] = []
+    for mutant in mutants:
+        family_key = _mutant_family_key(mutant)
+        if family_key not in family_buckets:
+            family_buckets[family_key] = []
+            family_order.append(family_key)
+        family_buckets[family_key].append(mutant)
+
+    rng.shuffle(family_order)
+    for family_key in family_order:
+        rng.shuffle(family_buckets[family_key])
+
+    reordered: list[Mutant] = []
+    while True:
+        progressed = False
+        for family_key in family_order:
+            bucket = family_buckets[family_key]
+            if not bucket:
+                continue
+            reordered.append(bucket.pop())
+            progressed = True
+        if not progressed:
+            break
+    return reordered
+
+
 def _dedupe_ints(values: list[int], *, minimum: int, maximum: int, current: int) -> list[int]:
     seen: set[int] = set()
     deduped: list[int] = []
@@ -790,7 +846,13 @@ def _sample_site_mutants(
         append_i32_samples("time-set", arg_offset=0, field="time")
     if instruction.opcode == OP_BOSSSETLIFECOUNT and len(instruction.args) >= 4:
         append_i32_samples("boss-life-count", arg_offset=0, field="count")
-    return mutants
+    return _reorder_site_mutants(
+        mutants,
+        random_seed=random_seed,
+        opcode=instruction.opcode,
+        sub_index=sub_index,
+        instruction_index=instruction_index,
+    )
 
 
 def generate_exploration_mutants(
