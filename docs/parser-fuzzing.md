@@ -10,3 +10,12 @@ The tracked Python code in `src/danmakufuzz/corpus/pbg3.py` provides a clean
 reference parser for corpus extraction and format understanding. Native
 harnesses under `fuzzers/parser/` will target the original or reconstructed C++
 implementations for sanitizer-backed fuzzing.
+
+Current first-pass parser-lane entrypoints:
+
+- `danmakufuzz.parser.pbg3_archive` validates archive structure and optional
+  decompression;
+- `danmakufuzz.parser.replay` validates replay magic, deobfuscation, checksum,
+  version, and stage offsets;
+- `danmakufuzz.parser.stage_std` walks the stage header, object table, quad
+  chains, and script region summary.
