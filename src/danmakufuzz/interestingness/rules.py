@@ -30,6 +30,77 @@ def _entity_count(record: dict[str, Any], key: str) -> int:
     return 0
 
 
+def _nested_value(record: dict[str, Any], path: tuple[str, ...]) -> Any:
+    value: Any = record
+    for component in path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(component)
+    return value
+
+
+def _path_label(path: tuple[str, ...]) -> str:
+    return ".".join(path)
+
+
+def _scalar_drift_detail(
+    baseline_record: dict[str, Any],
+    case_record: dict[str, Any],
+    paths: tuple[tuple[str, ...], ...],
+    *,
+    numeric_threshold: float | None = None,
+) -> str | None:
+    for path in paths:
+        baseline_value = _nested_value(baseline_record, path)
+        case_value = _nested_value(case_record, path)
+        if baseline_value is None or case_value is None:
+            continue
+        if numeric_threshold is None:
+            if baseline_value != case_value:
+                return f"{_path_label(path)} baseline={baseline_value} case={case_value}"
+            continue
+        if (
+            isinstance(baseline_value, (int, float))
+            and not isinstance(baseline_value, bool)
+            and isinstance(case_value, (int, float))
+            and not isinstance(case_value, bool)
+            and abs(float(baseline_value) - float(case_value)) >= numeric_threshold
+        ):
+            return f"{_path_label(path)} baseline={baseline_value} case={case_value}"
+    return None
+
+
+STAGE_VM_DRIFT_PATHS = (
+    ("stage_vm", "loaded"),
+    ("stage_vm", "script_time"),
+    ("stage_vm", "instruction_index"),
+    ("stage_vm", "unpause_flag"),
+    ("stage_vm", "spellcard_state"),
+    ("stage_vm", "spellcard_ticks"),
+)
+ECL_TIMELINE_DRIFT_PATHS = (
+    ("ecl_timeline", "time"),
+    ("ecl_timeline", "next_time"),
+)
+BOSS_UI_DRIFT_PATHS = (
+    ("boss_ui", "present"),
+    ("boss_ui", "ecl_lives"),
+    ("boss_ui", "spell_seconds"),
+    ("boss_ui", "opacity"),
+)
+SPELLCARD_DRIFT_PATHS = (
+    ("spellcard", "active"),
+    ("spellcard", "capturing"),
+    ("spellcard", "used_bomb"),
+    ("spellcard", "idx"),
+    ("spellcard", "capture_score"),
+)
+BOSS_HEALTH_DRIFT_PATHS = (
+    ("boss_ui", "health1"),
+    ("boss_ui", "health2"),
+)
+
+
 def _walk_numbers(value: Any, findings: list[Finding], path: str = "$") -> None:
     if isinstance(value, float):
         if not math.isfinite(value):
@@ -53,6 +124,8 @@ def score_trace(path: Path, *, stall_window: int = 240, bullet_limit: int = 1024
             record = json.loads(line)
             _walk_numbers(record, findings)
             frame = record.get("frame")
+            if not isinstance(frame, int):
+                frame = record.get("game_frame")
             if isinstance(frame, int):
                 if last_frame == frame:
                     repeated_frames += 1
@@ -107,6 +180,11 @@ def score_trace_differential(
     score_streak = 0
     power_streak = 0
     point_item_streak = 0
+    stage_vm_streak = 0
+    timeline_streak = 0
+    boss_ui_streak = 0
+    spellcard_streak = 0
+    boss_health_streak = 0
     saw_bullet_drift = False
     saw_enemy_drift = False
     saw_laser_drift = False
@@ -114,6 +192,11 @@ def score_trace_differential(
     saw_score_drift = False
     saw_power_drift = False
     saw_point_item_drift = False
+    saw_stage_vm_drift = False
+    saw_timeline_drift = False
+    saw_boss_ui_drift = False
+    saw_spellcard_drift = False
+    saw_boss_health_drift = False
     saw_life_drift = False
     saw_bomb_drift = False
 
@@ -181,6 +264,41 @@ def score_trace_differential(
                     )
                 )
                 saw_point_item_drift = True
+
+        stage_vm_detail = _scalar_drift_detail(baseline_record, case_record, STAGE_VM_DRIFT_PATHS)
+        stage_vm_streak = stage_vm_streak + 1 if stage_vm_detail is not None else 0
+        if stage_vm_streak >= sustained_window and not saw_stage_vm_drift:
+            findings.append(Finding("stage-script-drift", f"tick {tick_label} {stage_vm_detail}"))
+            saw_stage_vm_drift = True
+
+        timeline_detail = _scalar_drift_detail(baseline_record, case_record, ECL_TIMELINE_DRIFT_PATHS)
+        timeline_streak = timeline_streak + 1 if timeline_detail is not None else 0
+        if timeline_streak >= sustained_window and not saw_timeline_drift:
+            findings.append(Finding("ecl-timeline-drift", f"tick {tick_label} {timeline_detail}"))
+            saw_timeline_drift = True
+
+        boss_ui_detail = _scalar_drift_detail(baseline_record, case_record, BOSS_UI_DRIFT_PATHS)
+        boss_ui_streak = boss_ui_streak + 1 if boss_ui_detail is not None else 0
+        if boss_ui_streak >= sustained_window and not saw_boss_ui_drift:
+            findings.append(Finding("boss-ui-drift", f"tick {tick_label} {boss_ui_detail}"))
+            saw_boss_ui_drift = True
+
+        spellcard_detail = _scalar_drift_detail(baseline_record, case_record, SPELLCARD_DRIFT_PATHS)
+        spellcard_streak = spellcard_streak + 1 if spellcard_detail is not None else 0
+        if spellcard_streak >= sustained_window and not saw_spellcard_drift:
+            findings.append(Finding("spellcard-drift", f"tick {tick_label} {spellcard_detail}"))
+            saw_spellcard_drift = True
+
+        boss_health_detail = _scalar_drift_detail(
+            baseline_record,
+            case_record,
+            BOSS_HEALTH_DRIFT_PATHS,
+            numeric_threshold=0.01,
+        )
+        boss_health_streak = boss_health_streak + 1 if boss_health_detail is not None else 0
+        if boss_health_streak >= sustained_window and not saw_boss_health_drift:
+            findings.append(Finding("boss-health-drift", f"tick {tick_label} {boss_health_detail}"))
+            saw_boss_health_drift = True
 
         baseline_lives = baseline_record.get("lives")
         case_lives = case_record.get("lives")

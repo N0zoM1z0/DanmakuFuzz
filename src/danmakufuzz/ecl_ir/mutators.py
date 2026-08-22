@@ -22,9 +22,13 @@ OP_LASERCANCEL = 92
 OP_SPELLCARDSTART = 93
 OP_ANMSETSLOT = 99
 OP_ENEMYINTERRUPTSET = 109
+OP_BOSSTIMERSET = 112
+OP_LIFECALLBACKTHRESHOLD = 113
+OP_TIMERCALLBACKTHRESHOLD = 115
 OP_DROPITEMS = 119
 OP_EXINSCALL = 121
 OP_EXINSREPEAT = 122
+OP_TIMESET = 123
 OP_DROPITEMID = 124
 OP_BOSSSETLIFECOUNT = 126
 OP_ANMINTERRUPTSLOT = 129
@@ -141,6 +145,35 @@ def generate_targeted_mutants(ecl: EclFile) -> list[Mutant]:
                         ecl, sub_index, instruction_index,
                         RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 4, value)})
                     )))
+            if instruction.opcode == OP_BOSSTIMERSET and len(instruction.args) >= 4:
+                for name, value in (
+                    ("boss-timer-zero", 0),
+                    ("boss-timer-one", 1),
+                    ("boss-timer-large", 0x7FFF),
+                ):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
+                    )))
+            if instruction.opcode == OP_LIFECALLBACKTHRESHOLD and len(instruction.args) >= 4:
+                for name, value in (
+                    ("life-callback-threshold-zero", 0),
+                    ("life-callback-threshold-negative-one", -1),
+                ):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
+                    )))
+            if instruction.opcode == OP_TIMERCALLBACKTHRESHOLD and len(instruction.args) >= 4:
+                for name, value in (
+                    ("timer-callback-threshold-zero", 0),
+                    ("timer-callback-threshold-one", 1),
+                    ("timer-callback-threshold-large", 0x7FFF),
+                ):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
+                    )))
             if instruction.opcode == OP_EXINSCALL and len(instruction.args) >= 4:
                 for name, value in (("exinscall-17", 17), ("exinscall-255", 255)):
                     mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
@@ -202,6 +235,16 @@ def generate_targeted_mutants(ecl: EclFile) -> list[Mutant]:
                     ecl, sub_index, instruction_index,
                     RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, 255)})
                 )))
+            if instruction.opcode == OP_TIMESET and len(instruction.args) >= 4:
+                for name, value in (
+                    ("time-set-zero", 0),
+                    ("time-set-negative-one", -1),
+                    ("time-set-large-forward", 0x7FFF),
+                ):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
+                    )))
             if instruction.opcode == OP_BOSSSETLIFECOUNT and len(instruction.args) >= 4:
                 mutants.append(Mutant("boss-life-count-negative-one", key, _clone_with_mutated_instruction(
                     ecl, sub_index, instruction_index,
