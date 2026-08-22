@@ -199,6 +199,16 @@ def _walk_numbers(value: Any, findings: list[Finding], path: str = "$") -> None:
                     stack.append((f"{current_path}[{index}]", nested))
 
 
+def _report_compact_entity_non_finite(record: dict[str, Any], findings: list[Finding]) -> None:
+    metrics = record.get("entity_metrics")
+    if not isinstance(metrics, dict):
+        return
+    for field_name in ("items_non_finite", "bullets_non_finite", "lasers_non_finite"):
+        value = metrics.get(field_name)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            findings.append(Finding("non-finite", f"$.entity_metrics.{field_name}={value}"))
+
+
 def _mapping_drift_detail(
     baseline_mapping: Any,
     case_mapping: Any,
@@ -329,6 +339,7 @@ def score_trace_records(
                     detail=_stall_detail(record, frame=frame, stall_window=stall_window),
                 )
         _walk_numbers(record, findings)
+        _report_compact_entity_non_finite(record, findings)
         timeline_next_finding = None
         if not negative_timeline_next_reported:
             timeline_next_finding = _timeline_next_time_finding(record, line_number=line_number)
@@ -463,6 +474,7 @@ def score_trace_path_with_baseline(
                 )
 
         _walk_numbers(case_record, standalone_findings)
+        _report_compact_entity_non_finite(case_record, standalone_findings)
         if not negative_timeline_next_reported:
             timeline_next_finding = _timeline_next_time_finding(case_record, line_number=line_number)
             if timeline_next_finding is not None:
