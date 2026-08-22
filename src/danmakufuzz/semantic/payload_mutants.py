@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ..ecl_ir.mutators import Mutant, generate_exploration_mutants, generate_targeted_mutants
+from ..ecl_ir.mutators import (
+    Mutant,
+    generate_exploration_mutants,
+    generate_targeted_mutants,
+    materialize_mutant_ecl,
+)
 from ..ecl_ir.parser import parse_ecl
 from ..ecl_ir.serializer import serialize_ecl
 
@@ -59,6 +65,7 @@ def generate_ir_mutants(
     mutation_mode: str = "deterministic",
     random_seed: int = 0,
     samples_per_site: int = 4,
+    family_filters: Sequence[str] | None = None,
 ) -> list[Mutant]:
     ecl = parse_ecl(seed_payload)
     if mutation_mode == "deterministic":
@@ -68,6 +75,7 @@ def generate_ir_mutants(
             ecl,
             random_seed=random_seed,
             samples_per_site=samples_per_site,
+            family_filters=family_filters,
         )
     raise ValueError(f"unsupported mutation_mode: {mutation_mode}")
 
@@ -75,7 +83,7 @@ def generate_ir_mutants(
 def materialize_ir_mutant(mutant: Mutant) -> PayloadMutant:
     return PayloadMutant(
         name=mutant.name,
-        payload=serialize_ecl(mutant.ecl),
+        payload=serialize_ecl(materialize_mutant_ecl(mutant)),
         source="ir",
         path=mutant.path,
         metadata=mutant.metadata,
@@ -89,6 +97,7 @@ def generate_payload_mutants(
     mutation_mode: str = "deterministic",
     random_seed: int = 0,
     samples_per_site: int = 4,
+    family_filters: Sequence[str] | None = None,
 ) -> list[PayloadMutant]:
     mutants: list[PayloadMutant] = []
     if include_structural:
@@ -99,6 +108,7 @@ def generate_payload_mutants(
         mutation_mode=mutation_mode,
         random_seed=random_seed,
         samples_per_site=samples_per_site,
+        family_filters=family_filters,
     )
     for mutant in ir_mutants:
         mutants.append(materialize_ir_mutant(mutant))

@@ -96,6 +96,7 @@ def select_mutants(
             mutation_mode=mutation_mode,
             random_seed=random_seed,
             samples_per_site=samples_per_site,
+            family_filters=family_filters or name_filters,
         )
         candidates.extend(ir_mutants)
         filtered_candidates = filter_mutants_by_name(candidates, name_filters)
@@ -119,6 +120,7 @@ def select_mutants(
         mutation_mode=mutation_mode,
         random_seed=random_seed,
         samples_per_site=samples_per_site,
+        family_filters=family_filters or name_filters,
     )
     return filter_mutants_by_name(mutants, name_filters)
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import random
+from collections.abc import Sequence
 
 from .model import EclFile, EclSubroutine, RawInstruction
 
@@ -37,10 +38,18 @@ OP_ANMINTERRUPTSLOT = 129
 
 
 @dataclass(frozen=True)
+class DeferredMutation:
+    base_ecl: EclFile
+    sub_index: int
+    instruction_index: int
+    instruction: RawInstruction
+
+
+@dataclass(frozen=True)
 class Mutant:
     name: str
     path: tuple[int, int]
-    ecl: EclFile
+    ecl: EclFile | DeferredMutation
     metadata: dict[str, int | str] | None = None
 
 
@@ -63,6 +72,32 @@ def _replace_string(buffer: bytes, offset: int, data: bytes) -> bytes:
 
 
 def _clone_with_mutated_instruction(
+    ecl: EclFile,
+    sub_index: int,
+    instruction_index: int,
+    instruction: RawInstruction,
+) -> DeferredMutation:
+    return DeferredMutation(
+        base_ecl=ecl,
+        sub_index=sub_index,
+        instruction_index=instruction_index,
+        instruction=instruction,
+    )
+
+
+def materialize_mutant_ecl(mutant: Mutant) -> EclFile:
+    if isinstance(mutant.ecl, EclFile):
+        return mutant.ecl
+    deferred = mutant.ecl
+    return _materialized_clone_with_mutated_instruction(
+        deferred.base_ecl,
+        deferred.sub_index,
+        deferred.instruction_index,
+        deferred.instruction,
+    )
+
+
+def _materialized_clone_with_mutated_instruction(
     ecl: EclFile,
     sub_index: int,
     instruction_index: int,
@@ -302,6 +337,29 @@ def _mutant_family_key(mutant: Mutant) -> str:
     return mutant.name
 
 
+def _normalize_family_filters(family_filters: Sequence[str] | None) -> tuple[str, ...]:
+    if not family_filters:
+        return ()
+    normalized: list[str] = []
+    for family_filter in family_filters:
+        token = family_filter.strip().rstrip("-")
+        if token:
+            normalized.append(token)
+    return tuple(dict.fromkeys(normalized))
+
+
+def _family_requested(family: str, family_filters: Sequence[str] | None) -> bool:
+    normalized_filters = _normalize_family_filters(family_filters)
+    if not normalized_filters:
+        return True
+    return any(
+        family == token
+        or family.startswith(f"{token}-")
+        or token.startswith(f"{family}-")
+        for token in normalized_filters
+    )
+
+
 def _reorder_site_mutants(
     mutants: list[Mutant],
     *,
@@ -309,6 +367,7 @@ def _reorder_site_mutants(
     opcode: int,
     sub_index: int,
     instruction_index: int,
+    family_order_hint: Sequence[str] | None = None,
 ) -> list[Mutant]:
     if len(mutants) <= 1:
         return mutants
@@ -326,18 +385,35 @@ def _reorder_site_mutants(
         family_key = _mutant_family_key(mutant)
         if family_key not in family_buckets:
             family_buckets[family_key] = []
-            family_order.append(family_key)
         family_buckets[family_key].append(mutant)
+
+    if family_order_hint:
+        seen_families: set[str] = set()
+        for family_key in family_order_hint:
+            if family_key in seen_families:
+                continue
+            seen_families.add(family_key)
+            family_order.append(family_key)
+        for family_key in family_buckets:
+            if family_key not in seen_families:
+                family_order.append(family_key)
+    else:
+        family_order = list(family_buckets)
 
     rng.shuffle(family_order)
     for family_key in family_order:
-        rng.shuffle(family_buckets[family_key])
+        bucket = family_buckets.get(family_key)
+        if bucket is None:
+            continue
+        rng.shuffle(bucket)
 
     reordered: list[Mutant] = []
     while True:
         progressed = False
         for family_key in family_order:
-            bucket = family_buckets[family_key]
+            bucket = family_buckets.get(family_key)
+            if bucket is None:
+                continue
             if not bucket:
                 continue
             reordered.append(bucket.pop())
@@ -887,9 +963,14 @@ def _sample_site_mutants(
     instruction: RawInstruction,
     random_seed: int,
     samples_per_site: int,
+    family_filters: Sequence[str] | None = None,
 ) -> list[Mutant]:
     key = (sub_index, instruction_index)
     mutants: list[Mutant] = []
+    site_family_order: list[str] = []
+
+    def note_family(family: str) -> None:
+        site_family_order.append(family)
 
     def append_i32_samples(
         family: str,
@@ -1028,58 +1109,103 @@ def _sample_site_mutants(
 
     sub_count = len(ecl.subs)
     if instruction.opcode in {OP_JUMP, OP_JUMPDEC} and len(instruction.args) >= 8:
-        append_i32_samples("jump-offset", arg_offset=4, field="offset")
+        note_family("jump-offset")
+        if _family_requested("jump-offset", family_filters):
+            append_i32_samples("jump-offset", arg_offset=4, field="offset")
     if instruction.opcode == OP_CALL and len(instruction.args) >= 4:
-        append_i32_samples("call-sub", arg_offset=0, field="index", context_limit=sub_count)
+        note_family("call-sub")
+        if _family_requested("call-sub", family_filters):
+            append_i32_samples("call-sub", arg_offset=0, field="index", context_limit=sub_count)
     if OP_MOVE_TIME_FIRST <= instruction.opcode <= OP_MOVE_TIME_LAST and len(instruction.args) >= 4:
-        append_i32_samples("move-time", arg_offset=0, field="time")
+        note_family("move-time")
+        if _family_requested("move-time", family_filters):
+            append_i32_samples("move-time", arg_offset=0, field="time")
     if instruction.opcode in {OP_SHOOTINTERVAL, OP_SHOOTINTERVALDELAYED} and len(instruction.args) >= 4:
-        append_i32_samples("shoot-interval", arg_offset=0, field="time")
+        note_family("shoot-interval")
+        if _family_requested("shoot-interval", family_filters):
+            append_i32_samples("shoot-interval", arg_offset=0, field="time")
     if instruction.opcode in {OP_LASERROTATE, OP_LASERROTATEFROMPLAYER, OP_LASEROFFSET, OP_LASERTEST, OP_LASERCANCEL} and len(instruction.args) >= 4:
-        append_i32_samples("laser-index", arg_offset=0, field="small-positive")
+        note_family("laser-index")
+        if _family_requested("laser-index", family_filters):
+            append_i32_samples("laser-index", arg_offset=0, field="small-positive")
     if instruction.opcode == OP_ENEMYINTERRUPTSET and len(instruction.args) >= 8:
-        append_i32_samples("interrupt-id", arg_offset=4, field="small-positive")
+        note_family("interrupt-id")
+        if _family_requested("interrupt-id", family_filters):
+            append_i32_samples("interrupt-id", arg_offset=4, field="small-positive")
     if instruction.opcode == OP_BOSSTIMERSET and len(instruction.args) >= 4:
-        append_i32_samples("boss-timer", arg_offset=0, field="time")
+        note_family("boss-timer")
+        if _family_requested("boss-timer", family_filters):
+            append_i32_samples("boss-timer", arg_offset=0, field="time")
     if instruction.opcode == OP_LIFECALLBACKTHRESHOLD and len(instruction.args) >= 4:
-        append_i32_samples("life-callback-threshold", arg_offset=0, field="time")
+        note_family("life-callback-threshold")
+        if _family_requested("life-callback-threshold", family_filters):
+            append_i32_samples("life-callback-threshold", arg_offset=0, field="time")
     if instruction.opcode == OP_TIMERCALLBACKTHRESHOLD and len(instruction.args) >= 4:
-        append_i32_samples("timer-callback-threshold", arg_offset=0, field="time")
+        note_family("timer-callback-threshold")
+        if _family_requested("timer-callback-threshold", family_filters):
+            append_i32_samples("timer-callback-threshold", arg_offset=0, field="time")
     if instruction.opcode == OP_EXINSCALL and len(instruction.args) >= 4:
-        append_i32_samples("exinscall", arg_offset=0, field="small-positive")
+        note_family("exinscall")
+        if _family_requested("exinscall", family_filters):
+            append_i32_samples("exinscall", arg_offset=0, field="small-positive")
     if instruction.opcode == OP_EXINSREPEAT and len(instruction.args) >= 4:
-        append_i32_samples("exinsrepeat", arg_offset=0, field="count")
+        note_family("exinsrepeat")
+        if _family_requested("exinsrepeat", family_filters):
+            append_i32_samples("exinsrepeat", arg_offset=0, field="count")
     if instruction.opcode == OP_SPELLCARDSTART and len(instruction.args) >= 4:
-        append_i16_samples("spellcard-id", arg_offset=2, field="small-positive")
+        note_family("spellcard-id")
+        if _family_requested("spellcard-id", family_filters):
+            append_i16_samples("spellcard-id", arg_offset=2, field="small-positive")
     if OP_BULLETFANAIMED <= instruction.opcode <= OP_BULLETRANDOM and len(instruction.args) >= 12:
-        append_i32_samples("bullet-count1", arg_offset=4, field="count")
-        append_i32_samples("bullet-count2", arg_offset=8, field="count")
-        append_i32_pair_samples(
-            "bullet-count-cross",
-            left_offset=4,
-            right_offset=8,
-            field_left="count",
-            field_right="count",
-        )
-        append_i16_samples("bullet-sprite", arg_offset=0, field="small-positive")
+        note_family("bullet-count1")
+        if _family_requested("bullet-count1", family_filters):
+            append_i32_samples("bullet-count1", arg_offset=4, field="count")
+        note_family("bullet-count2")
+        if _family_requested("bullet-count2", family_filters):
+            append_i32_samples("bullet-count2", arg_offset=8, field="count")
+        note_family("bullet-count-cross")
+        if _family_requested("bullet-count-cross", family_filters):
+            append_i32_pair_samples(
+                "bullet-count-cross",
+                left_offset=4,
+                right_offset=8,
+                field_left="count",
+                field_right="count",
+            )
+        note_family("bullet-sprite")
+        if _family_requested("bullet-sprite", family_filters):
+            append_i16_samples("bullet-sprite", arg_offset=0, field="small-positive")
     if instruction.opcode == OP_DROPITEMS and len(instruction.args) >= 4:
-        append_i32_samples("drop-items", arg_offset=0, field="count")
+        note_family("drop-items")
+        if _family_requested("drop-items", family_filters):
+            append_i32_samples("drop-items", arg_offset=0, field="count")
     if instruction.opcode == OP_DROPITEMID and len(instruction.args) >= 4:
-        append_i32_samples("drop-item-id", arg_offset=0, field="small-positive")
+        note_family("drop-item-id")
+        if _family_requested("drop-item-id", family_filters):
+            append_i32_samples("drop-item-id", arg_offset=0, field="small-positive")
     if instruction.opcode == OP_ANMSETSLOT and len(instruction.args) >= 4:
-        append_i32_samples("anm-slot", arg_offset=0, field="small-positive")
+        note_family("anm-slot")
+        if _family_requested("anm-slot", family_filters):
+            append_i32_samples("anm-slot", arg_offset=0, field="small-positive")
     if instruction.opcode == OP_ANMINTERRUPTSLOT and len(instruction.args) >= 4:
-        append_i32_samples("anm-interrupt-slot", arg_offset=0, field="small-positive")
+        note_family("anm-interrupt-slot")
+        if _family_requested("anm-interrupt-slot", family_filters):
+            append_i32_samples("anm-interrupt-slot", arg_offset=0, field="small-positive")
     if instruction.opcode == OP_TIMESET and len(instruction.args) >= 4:
-        append_i32_samples("time-set", arg_offset=0, field="time")
+        note_family("time-set")
+        if _family_requested("time-set", family_filters):
+            append_i32_samples("time-set", arg_offset=0, field="time")
     if instruction.opcode == OP_BOSSSETLIFECOUNT and len(instruction.args) >= 4:
-        append_i32_samples("boss-life-count", arg_offset=0, field="count")
+        note_family("boss-life-count")
+        if _family_requested("boss-life-count", family_filters):
+            append_i32_samples("boss-life-count", arg_offset=0, field="count")
     return _reorder_site_mutants(
         mutants,
         random_seed=random_seed,
         opcode=instruction.opcode,
         sub_index=sub_index,
         instruction_index=instruction_index,
+        family_order_hint=site_family_order,
     )
 
 
@@ -1088,6 +1214,7 @@ def generate_exploration_mutants(
     *,
     random_seed: int,
     samples_per_site: int = 4,
+    family_filters: Sequence[str] | None = None,
 ) -> list[Mutant]:
     mutants: list[Mutant] = []
     for sub_index, subroutine in enumerate(ecl.subs):
@@ -1100,6 +1227,7 @@ def generate_exploration_mutants(
                     instruction=instruction,
                     random_seed=random_seed,
                     samples_per_site=samples_per_site,
+                    family_filters=family_filters,
                 )
             )
 
