@@ -64,6 +64,14 @@ limit-based selection. This avoids the older append-order bias where low
 `--limit` runs mostly exercised the first family/value emitted per site, which
 was too close to template testing.
 
+Inside each sampled field family, low `--samples-per-site` budgets also now
+shuffle the candidate-lane schedule itself instead of always draining the first
+few groups in a fixed order. That matters because earlier `4`-sample runs kept
+over-exercising anchor/relative lanes while starving later bit-flip, wide
+random, and crossed-pair lanes. Paired-field exploration additionally mixes
+left/right sampled pools directly now, so cross-field lanes are not limited to
+just diagonal or mirrored pairs.
+
 Sweep that reusable family set across the playable retail seeds with:
 
 ```sh

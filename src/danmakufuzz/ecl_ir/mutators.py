@@ -476,8 +476,13 @@ def _sample_value_groups(
     selected: list[int] = []
     seen: set[int] = set()
     while len(selected) < budget:
+        group_indices = [index for index, group in enumerate(pending) if group]
+        if not group_indices:
+            break
+        rng.shuffle(group_indices)
         progressed = False
-        for group in pending:
+        for group_index in group_indices:
+            group = pending[group_index]
             while group and group[-1] in seen:
                 group.pop()
             if not group:
@@ -555,8 +560,13 @@ def _sample_pair_groups(
     selected: list[tuple[int, int]] = []
     seen: set[tuple[int, int]] = set()
     while len(selected) < budget:
+        group_indices = [index for index, group in enumerate(pending) if group]
+        if not group_indices:
+            break
+        rng.shuffle(group_indices)
         progressed = False
-        for group in pending:
+        for group_index in group_indices:
+            group = pending[group_index]
             while group and group[-1] in seen:
                 group.pop()
             if not group:
@@ -932,6 +942,13 @@ def _sample_paired_signed_i32(
         (left_values[index], right_values[-(index + 1)])
         for index in range(min(len(left_values), len(right_values)))
     ]
+    mixed_pairs = [
+        (
+            left_values[left_rng.randrange(len(left_values))],
+            right_values[right_rng.randrange(len(right_values))],
+        )
+        for _ in range(max(8, budget * 4))
+    ]
     same_value_pairs = [
         (value, value)
         for value in list(dict.fromkeys(left_values + right_values))
@@ -944,6 +961,7 @@ def _sample_paired_signed_i32(
             scaled_pairs,
             diagonal_pairs,
             crossed_pairs,
+            mixed_pairs,
             same_value_pairs,
             swapped_pair,
         ],
