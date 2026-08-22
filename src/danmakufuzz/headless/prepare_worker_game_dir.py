@@ -31,6 +31,45 @@ def _copytree_best_effort(source: Path, destination: Path) -> str:
         return "shutil-copytree"
 
 
+def prepare_worker_game_dir(
+    *,
+    source_game_dir: Path,
+    destination: Path,
+    worker_name: str,
+    reuse: bool,
+) -> dict[str, object]:
+    source_game_dir = source_game_dir.resolve()
+    if not source_game_dir.is_dir():
+        raise FileNotFoundError(f"missing source game directory: {source_game_dir}")
+
+    destination = destination.resolve()
+    manifest_path = destination / ".danmakufuzz-worker.json"
+    if destination.exists():
+        if not reuse:
+            raise FileExistsError(f"destination already exists: {destination}")
+        manifest = {}
+        if manifest_path.is_file():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        return {
+            "destination": str(destination),
+            "reused": True,
+            "manifest": manifest,
+        }
+
+    copy_method = _copytree_best_effort(source_game_dir, destination)
+    file_count = sum(1 for path in destination.rglob("*") if path.is_file())
+    manifest = {
+        "source_game_dir": str(source_game_dir),
+        "destination": str(destination),
+        "worker_name": worker_name,
+        "copy_method": copy_method,
+        "prepared_at": datetime.now(timezone.utc).isoformat(),
+        "file_count": file_count,
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return manifest
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Prepare an isolated TH06 game directory for one headless worker."
@@ -50,45 +89,17 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    source_game_dir = args.source_game_dir.resolve()
-    if not source_game_dir.is_dir():
-        raise FileNotFoundError(f"missing source game directory: {source_game_dir}")
-
     destination = (
         args.destination.resolve()
         if args.destination is not None
         else (args.destination_root.resolve() / args.worker_name)
     )
-    manifest_path = destination / ".danmakufuzz-worker.json"
-    if destination.exists():
-        if not args.reuse:
-            raise FileExistsError(f"destination already exists: {destination}")
-        manifest = {}
-        if manifest_path.is_file():
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        print(
-            json.dumps(
-                {
-                    "destination": str(destination),
-                    "reused": True,
-                    "manifest": manifest,
-                },
-                indent=2,
-            )
-        )
-        return 0
-
-    copy_method = _copytree_best_effort(source_game_dir, destination)
-    file_count = sum(1 for path in destination.rglob("*") if path.is_file())
-    manifest = {
-        "source_game_dir": str(source_game_dir),
-        "destination": str(destination),
-        "worker_name": args.worker_name,
-        "copy_method": copy_method,
-        "prepared_at": datetime.now(timezone.utc).isoformat(),
-        "file_count": file_count,
-    }
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    manifest = prepare_worker_game_dir(
+        source_game_dir=args.source_game_dir,
+        destination=destination,
+        worker_name=args.worker_name,
+        reuse=args.reuse,
+    )
     print(json.dumps(manifest, indent=2))
     return 0
 
