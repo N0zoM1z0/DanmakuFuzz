@@ -10,9 +10,11 @@ from danmakufuzz.semantic.ecl_campaign import (
     classify_process_result,
     filter_mutants_by_name,
     infer_stage_from_ecl_name,
+    mutant_bucket_key,
     mutant_family,
     practice_stage_supported,
     resolve_campaign_profile,
+    resolve_selection_mode,
     select_diverse_mutants,
 )
 from danmakufuzz.semantic.minimize_case import TargetFinding, _ddmin_delete
@@ -75,6 +77,43 @@ def test_select_diverse_mutants_round_robins_across_families() -> None:
         "time-set-zero",
         "bullet-count2-zero",
     ]
+
+
+def test_select_diverse_mutants_site_mode_spreads_across_sites() -> None:
+    mutants = [
+        PayloadMutant(name="jump-offset-sampled-1", payload=b"", source="ir", path=(4, 19)),
+        PayloadMutant(name="jump-offset-sampled-2", payload=b"", source="ir", path=(4, 19)),
+        PayloadMutant(name="call-sub-sampled-1", payload=b"", source="ir", path=(9, 15)),
+        PayloadMutant(name="call-sub-sampled-2", payload=b"", source="ir", path=(9, 15)),
+        PayloadMutant(name="jump-offset-sampled-3", payload=b"", source="ir", path=(13, 33)),
+    ]
+    selected = select_diverse_mutants(
+        mutants,
+        limit=3,
+        family_filters=["jump-offset-", "call-sub-"],
+        selection_mode="site",
+    )
+    assert [mutant.name for mutant in selected] == [
+        "jump-offset-sampled-1",
+        "call-sub-sampled-1",
+        "jump-offset-sampled-3",
+    ]
+
+
+def test_resolve_selection_mode_auto_prefers_site_for_exploration() -> None:
+    assert resolve_selection_mode(mutation_mode="deterministic", selection_mode="auto") == "family"
+    assert resolve_selection_mode(mutation_mode="exploration", selection_mode="auto") == "site"
+
+
+def test_mutant_bucket_key_family_site_combines_dimensions() -> None:
+    mutant = PayloadMutant(name="jump-offset-sampled-1", payload=b"", source="ir", path=(4, 19))
+    assert mutant_bucket_key(
+        mutant,
+        family_filters=["jump-offset-"],
+        selection_mode="family-site",
+    ) == "jump-offset|s04:i0019"
+
+
 def test_resolve_campaign_profile_boss_defaults() -> None:
     resolved = resolve_campaign_profile(
         profile="boss",

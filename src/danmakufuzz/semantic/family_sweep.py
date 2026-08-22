@@ -11,6 +11,7 @@ from .ecl_campaign import (
     infer_stage_from_ecl_name,
     practice_stage_supported,
     resolve_campaign_profile,
+    resolve_selection_mode,
     run_case,
     select_diverse_mutants,
     select_mutants,
@@ -86,6 +87,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mutation-mode", choices=("deterministic", "exploration"), default="deterministic")
     parser.add_argument("--random-seed", type=int, default=0)
     parser.add_argument("--samples-per-site", type=int, default=4)
+    parser.add_argument("--selection-mode", choices=("auto", "family", "site", "family-site"), default="auto")
     parser.add_argument("--auto-shoot", dest="auto_shoot", action="store_true")
     parser.add_argument("--no-auto-shoot", dest="auto_shoot", action="store_false")
     parser.set_defaults(auto_shoot=True)
@@ -98,6 +100,10 @@ def main() -> int:
     seed_ecls = [path.resolve() for path in args.seed_ecl] if args.seed_ecl else [path.resolve() for path in default_seed_ecls()]
     artifact_dir = (args.artifact_dir or _default_artifact_dir()).resolve()
     ensure_directory(artifact_dir)
+    resolved_selection_mode = resolve_selection_mode(
+        mutation_mode=args.mutation_mode,
+        selection_mode=args.selection_mode,
+    )
     profile = resolve_campaign_profile(
         profile=args.profile,
         action_file=args.actions.resolve(),
@@ -164,6 +170,7 @@ def main() -> int:
             mutants,
             limit=args.limit_per_seed,
             family_filters=profile["name_filters"],
+            selection_mode=resolved_selection_mode,
         )
 
         summary_path = seed_dir / "summary.jsonl"
@@ -218,6 +225,7 @@ def main() -> int:
             "mutation_mode": args.mutation_mode,
             "random_seed": args.random_seed,
             "samples_per_site": args.samples_per_site,
+            "selection_mode": resolved_selection_mode,
             "actions": str(Path(profile["action_file"]).resolve()),
             "max_ticks": int(profile["max_ticks"]),
             "continue_after_hit": bool(profile["continue_after_hit"]),
@@ -239,6 +247,7 @@ def main() -> int:
         "mutation_mode": args.mutation_mode,
         "random_seed": args.random_seed,
         "samples_per_site": args.samples_per_site,
+        "selection_mode": resolved_selection_mode,
         "totals": totals,
         "seeds": seed_summaries,
         "skipped": skipped,

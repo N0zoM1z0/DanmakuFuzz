@@ -88,11 +88,42 @@ def mutant_family(mutant: PayloadMutant, family_filters: Sequence[str] | None = 
     return mutant.name
 
 
+def mutant_site(mutant: PayloadMutant) -> str:
+    if mutant.path is None:
+        return "raw"
+    sub_index, instruction_index = mutant.path
+    return f"s{sub_index:02d}:i{instruction_index:04d}"
+
+
+def resolve_selection_mode(*, mutation_mode: str, selection_mode: str) -> str:
+    if selection_mode == "auto":
+        return "site" if mutation_mode == "exploration" else "family"
+    if selection_mode not in {"family", "site", "family-site"}:
+        raise ValueError(f"unsupported selection_mode: {selection_mode}")
+    return selection_mode
+
+
+def mutant_bucket_key(
+    mutant: PayloadMutant,
+    *,
+    family_filters: Sequence[str] | None = None,
+    selection_mode: str = "family",
+) -> str:
+    if selection_mode == "family":
+        return mutant_family(mutant, family_filters)
+    if selection_mode == "site":
+        return mutant_site(mutant)
+    if selection_mode == "family-site":
+        return f"{mutant_family(mutant, family_filters)}|{mutant_site(mutant)}"
+    raise ValueError(f"unsupported selection_mode: {selection_mode}")
+
+
 def select_diverse_mutants(
     mutants: Sequence[PayloadMutant],
     *,
     limit: int | None,
     family_filters: Sequence[str] | None = None,
+    selection_mode: str = "family",
 ) -> list[PayloadMutant]:
     if limit is None or limit >= len(mutants):
         return list(mutants)
@@ -102,11 +133,15 @@ def select_diverse_mutants(
     buckets: dict[str, list[PayloadMutant]] = {}
     family_order: list[str] = []
     for mutant in mutants:
-        family = mutant_family(mutant, family_filters)
-        if family not in buckets:
-            buckets[family] = []
-            family_order.append(family)
-        buckets[family].append(mutant)
+        bucket_key = mutant_bucket_key(
+            mutant,
+            family_filters=family_filters,
+            selection_mode=selection_mode,
+        )
+        if bucket_key not in buckets:
+            buckets[bucket_key] = []
+            family_order.append(bucket_key)
+        buckets[bucket_key].append(mutant)
 
     selected: list[PayloadMutant] = []
     while len(selected) < limit:
@@ -331,6 +366,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mutation-mode", choices=("deterministic", "exploration"), default="deterministic")
     parser.add_argument("--random-seed", type=int, default=0)
     parser.add_argument("--samples-per-site", type=int, default=4)
+    parser.add_argument("--selection-mode", choices=("auto", "family", "site", "family-site"), default="auto")
     parser.add_argument("--auto-shoot", dest="auto_shoot", action="store_true")
     parser.add_argument("--no-auto-shoot", dest="auto_shoot", action="store_false")
     parser.set_defaults(auto_shoot=True)
@@ -344,6 +380,10 @@ def main() -> int:
     if not seed_ecl.is_file():
         raise FileNotFoundError(f"missing seed ECL: {seed_ecl}")
     stage = args.stage if args.stage is not None else infer_stage_from_ecl_name(seed_ecl)
+    resolved_selection_mode = resolve_selection_mode(
+        mutation_mode=args.mutation_mode,
+        selection_mode=args.selection_mode,
+    )
     profile = resolve_campaign_profile(
         profile=args.profile,
         action_file=args.actions.resolve(),
@@ -390,6 +430,7 @@ def main() -> int:
         mutants,
         limit=args.limit,
         family_filters=profile["name_filters"],
+        selection_mode=resolved_selection_mode,
     )
 
     summary_path = artifact_dir / "summary.jsonl"
@@ -438,6 +479,7 @@ def main() -> int:
         "mutation_mode": args.mutation_mode,
         "random_seed": args.random_seed,
         "samples_per_site": args.samples_per_site,
+        "selection_mode": resolved_selection_mode,
         "actions": str(profile["action_file"]),
         "max_ticks": profile["max_ticks"],
         "continue_after_hit": profile["continue_after_hit"],
