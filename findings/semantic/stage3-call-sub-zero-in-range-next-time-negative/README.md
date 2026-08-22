@@ -63,6 +63,8 @@ Current local evidence:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-call-sub-portable-explore-a/summary.json`
 - Stage 3 `call-sub` hotspot basin summary:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/stage3-call-sub-portable-explore-a/summary.json`
+- Stage 3 `call-sub` trace basin summary:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/stage3-call-sub-portable-explore-a/summary.json`
 
 Why this one matters:
 
@@ -86,3 +88,8 @@ Current interpretation:
 - note: the newer family sweep suggests this reproducer is a representative of a
   Stage 3-specific `call-sub` structural weakness, not a TH06-wide `call-sub`
   behavior.
+- note: the trace-basin report shows the broader Stage 3 `call-sub` family does
+  not drift gradually. Across `11` interesting cases, the first observable
+  divergence is always tick `1347`, the first differing field is always
+  `ecl_timeline`, and every case lands in the same sink snapshot with
+  `next_time=-9163`.

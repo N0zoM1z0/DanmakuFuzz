@@ -103,6 +103,18 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.batch_minimize \
 This wrapper skips cluster representatives that already have a minimized summary
 and only runs `semantic.minimize_case` on the missing handoff candidates.
 
+Group a family sweep or one finding family by common first-divergence tick and
+common sink snapshot with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.trace_basins \
+  artifacts/semantic-family-sweep/20260822T-call-sub-portable-explore-a/ecldata3/summary.jsonl
+```
+
+This is useful when multiple different mutations collapse into one weird late
+state and you want to prove they first diverge at the same tick / field instead
+of hand-reading traces one by one.
+
 When a case only reproduces under the original loose-resource override path,
 `semantic.minimize_case` now falls back automatically and records the selected
 `reproduction_mode` in `summary.json` and `history.jsonl`.
