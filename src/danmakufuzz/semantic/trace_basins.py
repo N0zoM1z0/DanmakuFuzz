@@ -115,6 +115,10 @@ def _normalize_record(record: dict[str, Any], *, pos_round: int) -> dict[str, An
             for enemy in enemies
             if isinstance(enemy, dict)
         ]
+    items = record.get("items")
+    item_count = len(items) if isinstance(items, list) else 0
+    bullets = record.get("bullets")
+    bullet_count = len(bullets) if isinstance(bullets, list) else 0
     return {
         "tick": int(record.get("tick", 0)),
         "game_frame": int(record.get("game_frame", 0)),
@@ -123,6 +127,8 @@ def _normalize_record(record: dict[str, Any], *, pos_round: int) -> dict[str, An
         "bombs": int(record.get("bombs", 0)),
         "power": int(record.get("power", 0)),
         "enemy_count": int(record.get("enemy_count", 0)),
+        "item_count": item_count,
+        "bullet_count": bullet_count,
         "point_items_stage": int(record.get("point_items_stage", 0)),
         "point_items_total": int(record.get("point_items_total", 0)),
         "stage_vm": record.get("stage_vm"),
@@ -155,6 +161,8 @@ def _record_diff_keys(lhs: dict[str, Any], rhs: dict[str, Any]) -> list[str]:
         "bombs",
         "power",
         "enemy_count",
+        "item_count",
+        "bullet_count",
         "point_items_stage",
         "point_items_total",
         "stage_vm",
@@ -203,6 +211,8 @@ def _sink_snapshot(record: dict[str, Any]) -> dict[str, Any]:
         "bombs": record["bombs"],
         "power": record["power"],
         "enemy_count": record["enemy_count"],
+        "item_count": record["item_count"],
+        "bullet_count": record["bullet_count"],
         "point_items_stage": record["point_items_stage"],
         "point_items_total": record["point_items_total"],
         "stage_vm": record["stage_vm"],
