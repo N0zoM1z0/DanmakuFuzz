@@ -603,6 +603,33 @@ def _bitflip_values(current: int, *, bits: tuple[int, ...]) -> list[int]:
     return [current ^ (1 << bit) for bit in bits]
 
 
+def _power_of_two_neighbors(*, bits: tuple[int, ...], signed: bool) -> list[int]:
+    values: list[int] = []
+    for bit in bits:
+        if bit < 0:
+            continue
+        base = 1 << bit
+        values.extend([base - 1, base, base + 1])
+        if signed:
+            values.extend([-(base + 1), -base, -(base - 1)])
+    return values
+
+
+def _magnitude_neighbor_values(current: int, *, signed: bool) -> list[int]:
+    absolute = abs(current)
+    if absolute == 0:
+        return []
+    low_bit = max(0, absolute.bit_length() - 1)
+    high_bit = absolute.bit_length()
+    values = _power_of_two_neighbors(bits=(low_bit, high_bit), signed=False)
+    if signed:
+        signed_values: list[int] = []
+        for value in values:
+            signed_values.extend([value, -value])
+        return signed_values
+    return values
+
+
 def _random_signed_bits(rng: random.Random, bit_width: int) -> int:
     value = rng.getrandbits(bit_width)
     return -value if rng.getrandbits(1) else value
@@ -641,6 +668,7 @@ def _sample_u8(
         current + rng.randint(-span, span)
         for span in (3, 7, 15, 31, 63, 127)
     ]
+    power_values = _power_of_two_neighbors(bits=(0, 1, 2, 3, 4, 5, 6, 7), signed=False)
     random_values = [rng.randint(0, 255) for _ in range(max(8, budget * 4))]
     return _sample_value_groups(
         [
@@ -648,6 +676,7 @@ def _sample_u8(
             relative_values,
             bitflip_values,
             random_local_values,
+            power_values,
             random_values,
         ],
         current=current,
@@ -848,9 +877,15 @@ def _sample_signed_i32(
     available_bits = (0, 1, 2, 3, 4, 5, 7, 8, 11, 15, 16, 23, 30)
     selected_bits = tuple(rng.sample(available_bits, k=min(8, len(available_bits))))
     bitflip_values = _bitflip_values(current, bits=selected_bits)
+    power_values = _power_of_two_neighbors(bits=selected_bits, signed=True)
+    magnitude_values = _magnitude_neighbor_values(current, signed=True)
     random_local_values = [
         current + rng.randint(-span, span)
         for span in (3, 7, 15, 31, 63, 127, 255, 1023, 4095, 16383)
+    ]
+    random_stride_values = [
+        current + (rng.choice((-1, 1)) * rng.randint(1, 4096) * rng.choice((1, 2, 4, 8, 16, 32)))
+        for _ in range(max(6, budget * 2))
     ]
     random_extreme_values = [
         rng.randint(-32, 32),
@@ -863,6 +898,7 @@ def _sample_signed_i32(
         ((1 << 31) - 1) - rng.randint(0, 255),
         -(1 << 31) + rng.randint(0, 255),
     ]
+    mirrored_values = [current, -current, current - 1, current + 1, -current - 1, -current + 1]
     context_values: list[int] = []
     if context_limit is not None and context_limit >= 0:
         upper = max(context_limit + 4, 4)
@@ -872,6 +908,9 @@ def _sample_signed_i32(
             context_limit * 2,
             current + context_limit,
             current - context_limit,
+            context_limit + 1,
+            context_limit - 1,
+            -(context_limit + 1),
         ])
     return _sample_value_groups(
         [
@@ -880,7 +919,11 @@ def _sample_signed_i32(
             relative_values,
             scaled_values,
             bitflip_values,
+            power_values,
+            magnitude_values,
+            mirrored_values,
             random_local_values,
+            random_stride_values,
             random_extreme_values,
         ],
         current=current,
@@ -959,9 +1002,15 @@ def _sample_signed_i16(
     available_bits = (0, 1, 2, 3, 4, 5, 7, 8, 11, 14)
     selected_bits = tuple(rng.sample(available_bits, k=min(6, len(available_bits))))
     bitflip_values = _bitflip_values(current, bits=selected_bits)
+    power_values = _power_of_two_neighbors(bits=selected_bits, signed=True)
+    magnitude_values = _magnitude_neighbor_values(current, signed=True)
     random_local_values = [
         current + rng.randint(-span, span)
         for span in (3, 7, 15, 31, 63, 127, 255, 511)
+    ]
+    random_stride_values = [
+        current + (rng.choice((-1, 1)) * rng.randint(1, 128) * rng.choice((1, 2, 4, 8, 16)))
+        for _ in range(max(4, budget * 2))
     ]
     random_extreme_values = [
         rng.randint(-32, 32),
@@ -972,13 +1021,18 @@ def _sample_signed_i16(
         ((1 << 15) - 1) - rng.randint(0, 63),
         -(1 << 15) + rng.randint(0, 63),
     ]
+    mirrored_values = [current, -current, current - 1, current + 1, -current - 1, -current + 1]
     return _sample_value_groups(
         [
             list(base),
             relative_values,
             scaled_values,
             bitflip_values,
+            power_values,
+            magnitude_values,
+            mirrored_values,
             random_local_values,
+            random_stride_values,
             random_extreme_values,
         ],
         current=current,
@@ -1064,6 +1118,22 @@ def _sample_paired_signed_i32(
         )
         for _ in range(max(8, budget * 4))
     ]
+    one_sided_pairs = (
+        [(value, current_right) for value in left_values[: max(4, budget * 2)]]
+        + [(current_left, value) for value in right_values[: max(4, budget * 2)]]
+    )
+    biased_pairs = []
+    for value in list(dict.fromkeys(left_values + right_values))[: max(6, budget * 2)]:
+        biased_pairs.extend([
+            (0, value),
+            (value, 0),
+            (1, value),
+            (value, 1),
+            (-1, value),
+            (value, -1),
+            (value, -value),
+            (-value, value),
+        ])
     same_value_pairs = [
         (value, value)
         for value in list(dict.fromkeys(left_values + right_values))
@@ -1077,6 +1147,8 @@ def _sample_paired_signed_i32(
             diagonal_pairs,
             crossed_pairs,
             mixed_pairs,
+            one_sided_pairs,
+            biased_pairs,
             same_value_pairs,
             swapped_pair,
         ],
@@ -1086,6 +1158,22 @@ def _sample_paired_signed_i32(
         budget=budget,
         rng=rng,
     )
+
+
+def _select_generic_i32_slots(
+    *,
+    slot_count: int,
+    rng: random.Random,
+) -> list[int]:
+    if slot_count <= 0:
+        return []
+    if slot_count <= 2:
+        return list(range(slot_count))
+    anchor_pool = sorted({0, 1, slot_count - 2, slot_count - 1})
+    first = anchor_pool[rng.randrange(len(anchor_pool))]
+    remaining = [index for index in range(slot_count) if index != first]
+    second = remaining[rng.randrange(len(remaining))]
+    return [first, second]
 
 
 def _sample_site_mutants(
@@ -1273,6 +1361,54 @@ def _sample_site_mutants(
                 )
             )
 
+    def append_instruction_time_i32_pair_samples(
+        family: str,
+        *,
+        arg_offset: int,
+        field_right: str,
+    ) -> None:
+        current_left = int(instruction.time)
+        current_right = _read_i32(instruction.args, arg_offset)
+        rng = _site_rng(
+            random_seed,
+            opcode=instruction.opcode,
+            sub_index=sub_index,
+            instruction_index=instruction_index,
+            family=family,
+        )
+        for left_value, right_value in _sample_paired_signed_i32(
+            current_left=current_left,
+            current_right=current_right,
+            budget=max(2, samples_per_site),
+            rng=rng,
+            field_left="time",
+            field_right=field_right,
+        ):
+            mutated_args = _replace_i32(instruction.args, arg_offset, right_value)
+            mutants.append(
+                Mutant(
+                    f"{family}-sampled-{_value_slug(left_value)}-{_value_slug(right_value)}",
+                    key,
+                    _clone_with_mutated_instruction(
+                        ecl,
+                        sub_index,
+                        instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "time": left_value, "args": mutated_args}),
+                    ),
+                    metadata={
+                        "strategy": "sampled-instruction-time-i32-pair",
+                        "family": family,
+                        "field_left": "time",
+                        "field_right": field_right,
+                        "field_name_left": "time",
+                        "right_offset": arg_offset,
+                        "left_value": left_value,
+                        "right_value": right_value,
+                        "random_seed": random_seed,
+                    },
+                )
+            )
+
     def append_i32_pair_samples(
         family: str,
         *,
@@ -1333,8 +1469,18 @@ def _sample_site_mutants(
     if len(instruction.args) >= 4:
         note_family("generic-arg32")
         if _family_requested("generic-arg32", family_filters):
-            generic_i32_slots = min(len(instruction.args) // 4, 2)
-            for slot_index in range(generic_i32_slots):
+            slot_rng = _site_rng(
+                random_seed,
+                opcode=instruction.opcode,
+                sub_index=sub_index,
+                instruction_index=instruction_index,
+                family="generic-arg32-slots",
+            )
+            slot_indices = _select_generic_i32_slots(
+                slot_count=len(instruction.args) // 4,
+                rng=slot_rng,
+            )
+            for slot_index in slot_indices:
                 append_i32_samples(
                     f"generic-arg32-o{slot_index}",
                     arg_offset=slot_index * 4,
@@ -1355,10 +1501,16 @@ def _sample_site_mutants(
         note_family("move-time")
         if _family_requested("move-time", family_filters):
             append_i32_samples("move-time", arg_offset=0, field="time")
+        note_family("move-time-cross")
+        if _family_requested("move-time-cross", family_filters):
+            append_instruction_time_i32_pair_samples("move-time-cross", arg_offset=0, field_right="time")
     if instruction.opcode in {OP_SHOOTINTERVAL, OP_SHOOTINTERVALDELAYED} and len(instruction.args) >= 4:
         note_family("shoot-interval")
         if _family_requested("shoot-interval", family_filters):
             append_i32_samples("shoot-interval", arg_offset=0, field="time")
+        note_family("shoot-interval-cross")
+        if _family_requested("shoot-interval-cross", family_filters):
+            append_instruction_time_i32_pair_samples("shoot-interval-cross", arg_offset=0, field_right="time")
     if instruction.opcode in {OP_LASERROTATE, OP_LASERROTATEFROMPLAYER, OP_LASEROFFSET, OP_LASERTEST, OP_LASERCANCEL} and len(instruction.args) >= 4:
         note_family("laser-index")
         if _family_requested("laser-index", family_filters):
@@ -1371,14 +1523,23 @@ def _sample_site_mutants(
         note_family("boss-timer")
         if _family_requested("boss-timer", family_filters):
             append_i32_samples("boss-timer", arg_offset=0, field="time")
+        note_family("boss-timer-cross")
+        if _family_requested("boss-timer-cross", family_filters):
+            append_instruction_time_i32_pair_samples("boss-timer-cross", arg_offset=0, field_right="time")
     if instruction.opcode == OP_LIFECALLBACKTHRESHOLD and len(instruction.args) >= 4:
         note_family("life-callback-threshold")
         if _family_requested("life-callback-threshold", family_filters):
             append_i32_samples("life-callback-threshold", arg_offset=0, field="time")
+        note_family("life-callback-threshold-cross")
+        if _family_requested("life-callback-threshold-cross", family_filters):
+            append_instruction_time_i32_pair_samples("life-callback-threshold-cross", arg_offset=0, field_right="time")
     if instruction.opcode == OP_TIMERCALLBACKTHRESHOLD and len(instruction.args) >= 4:
         note_family("timer-callback-threshold")
         if _family_requested("timer-callback-threshold", family_filters):
             append_i32_samples("timer-callback-threshold", arg_offset=0, field="time")
+        note_family("timer-callback-threshold-cross")
+        if _family_requested("timer-callback-threshold-cross", family_filters):
+            append_instruction_time_i32_pair_samples("timer-callback-threshold-cross", arg_offset=0, field_right="time")
     if instruction.opcode == OP_EXINSCALL and len(instruction.args) >= 4:
         note_family("exinscall")
         if _family_requested("exinscall", family_filters):
@@ -1430,6 +1591,9 @@ def _sample_site_mutants(
         note_family("time-set")
         if _family_requested("time-set", family_filters):
             append_i32_samples("time-set", arg_offset=0, field="time")
+        note_family("time-set-cross")
+        if _family_requested("time-set-cross", family_filters):
+            append_instruction_time_i32_pair_samples("time-set-cross", arg_offset=0, field_right="time")
     if instruction.opcode == OP_BOSSSETLIFECOUNT and len(instruction.args) >= 4:
         note_family("boss-life-count")
         if _family_requested("boss-life-count", family_filters):

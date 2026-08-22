@@ -363,5 +363,51 @@ def test_generate_exploration_mutants_is_seeded_for_time_set() -> None:
 
     assert first_names == second_names
     assert first_names != third_names
-    assert all(name.startswith("time-set-sampled-") for name in first_names)
+    assert any(name.startswith("time-set-sampled-") for name in first_names)
+    assert any(name.startswith("time-set-cross-sampled-") for name in first_names)
     assert all(mutant.metadata is not None for mutant in first)
+
+
+def test_generate_exploration_mutants_generic_arg32_can_reach_nonleading_slots() -> None:
+    ecl = EclFile(
+        sub_count=1,
+        main_count=0,
+        timeline_offsets=(0, 0, 0),
+        timeline=[],
+        subs=[
+            EclSubroutine(
+                file_offset=0,
+                instructions=[
+                    RawInstruction(
+                        time=0,
+                        opcode=200,
+                        offset_to_next=28,
+                        unk8=0,
+                        skip_for_difficulty=0,
+                        unk_a=0,
+                        unk_b=0,
+                        args=(
+                            (10).to_bytes(4, "little", signed=True)
+                            + (20).to_bytes(4, "little", signed=True)
+                            + (30).to_bytes(4, "little", signed=True)
+                            + (40).to_bytes(4, "little", signed=True)
+                        ),
+                    ),
+                ],
+            )
+        ],
+    )
+    mutants = generate_exploration_mutants(
+        ecl,
+        random_seed=1,
+        samples_per_site=4,
+        family_filters=["generic-arg32"],
+    )
+    offsets = {
+        int(metadata["arg_offset"])
+        for mutant in mutants
+        for metadata in [mutant.metadata]
+        if isinstance(metadata, dict) and isinstance(metadata.get("arg_offset"), int)
+    }
+    assert len(offsets) == 2
+    assert any(offset > 4 for offset in offsets)
