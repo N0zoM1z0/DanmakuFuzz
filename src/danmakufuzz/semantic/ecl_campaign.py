@@ -196,6 +196,16 @@ def write_case_result(case_dir: Path, result: dict[str, object]) -> None:
     (case_dir / "result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
 
 
+def suppress_baseline_trace_findings(
+    case_findings: Sequence[Finding],
+    baseline_findings: Sequence[Finding],
+) -> list[Finding]:
+    baseline_kinds = {finding.kind for finding in baseline_findings}
+    if not baseline_kinds:
+        return list(case_findings)
+    return [finding for finding in case_findings if finding.kind not in baseline_kinds]
+
+
 def run_case(
     *,
     binary: Path,
@@ -260,7 +270,12 @@ def run_case(
 
     findings = classify_process_result(returncode, timed_out=timed_out)
     if trace_path.exists() and trace_path.stat().st_size > 0:
-        findings.extend(score_trace(trace_path))
+        trace_findings = score_trace(trace_path)
+        baseline_trace_findings: list[Finding] = []
+        if baseline_trace is not None and baseline_trace.is_file():
+            baseline_trace_findings = score_trace(baseline_trace)
+            trace_findings = suppress_baseline_trace_findings(trace_findings, baseline_trace_findings)
+        findings.extend(trace_findings)
         if baseline_trace is not None and baseline_trace.is_file():
             findings.extend(score_trace_differential(trace_path, baseline_trace))
     elif not findings:

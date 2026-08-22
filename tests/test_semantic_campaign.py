@@ -14,6 +14,7 @@ from danmakufuzz.semantic.ecl_campaign import (
     practice_stage_supported,
     resolve_campaign_profile,
     select_diverse_mutants,
+    suppress_baseline_trace_findings,
 )
 from danmakufuzz.semantic.minimize_case import TargetFinding, _ddmin_delete
 from danmakufuzz.semantic.payload_mutants import PayloadMutant
@@ -75,6 +76,20 @@ def test_select_diverse_mutants_round_robins_across_families() -> None:
         "time-set-zero",
         "bullet-count2-zero",
     ]
+
+
+def test_suppress_baseline_trace_findings_drops_baseline_kinds() -> None:
+    case_findings = [
+        Finding("stalled-progress", "frame=1028 ..."),
+        Finding("stalled-frame", "frame 1028 repeated >= 240 times"),
+        Finding("stage-script-drift", "tick 1403 stage_vm.script_time baseline=1028 case=1403"),
+    ]
+    baseline_findings = [
+        Finding("stalled-progress", "frame=1028 ..."),
+        Finding("stalled-frame", "frame 1028 repeated >= 240 times"),
+    ]
+    filtered = suppress_baseline_trace_findings(case_findings, baseline_findings)
+    assert filtered == [Finding("stage-script-drift", "tick 1403 stage_vm.script_time baseline=1028 case=1403")]
 
 
 def test_resolve_campaign_profile_boss_defaults() -> None:
