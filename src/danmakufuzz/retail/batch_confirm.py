@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from ..repo import ARTIFACTS_DIR, ensure_directory
+from .signatures import normalize_wine_primary_signature, retail_signature_key
 
 
 FINDING_SEVERITY = {
@@ -108,21 +109,6 @@ def _case_label(result_path: Path) -> str:
     if result_path.name == "result.json":
         return result_path.parent.name
     return result_path.stem
-
-
-def _normalize_signature_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized = " ".join(value.split())
-    return normalized or None
-
-
-def _retail_signature_key(classification: str | None, primary_signature: str | None) -> str:
-    normalized_classification = classification or "unknown"
-    normalized_signature = _normalize_signature_text(primary_signature)
-    if normalized_signature is None:
-        return normalized_classification
-    return f"{normalized_classification}:{normalized_signature}"
 
 
 def _finding_key(kind: str | None, detail: str | None) -> str:
@@ -313,8 +299,8 @@ def _history_case(
         source_keys=tuple(unique_source_keys),
         primary_finding_key=primary_finding_key,
         classification=classification,
-        retail_signature_key=_retail_signature_key(classification, primary_signature),
-        wine_log_primary_signature=_normalize_signature_text(primary_signature),
+        retail_signature_key=retail_signature_key(classification, primary_signature),
+        wine_log_primary_signature=normalize_wine_primary_signature(primary_signature),
     )
 
 
@@ -525,8 +511,8 @@ def _history_subset(
                     "case_name": hit.case_name,
                     "origin_path": hit.origin_path,
                     "classification": hit.classification,
-                    "retail_signature_key": hit.retail_signature_key,
-                }
+                "retail_signature_key": hit.retail_signature_key,
+            }
             )
     return {
         "hits": len(hits),
@@ -894,7 +880,7 @@ def main() -> int:
                 "stdout": str(stdout_path),
                 "returncode": completed.returncode,
                 "classification": classification,
-                "retail_signature_key": _retail_signature_key(classification, primary_signature),
+                "retail_signature_key": retail_signature_key(classification, primary_signature),
                 "report_present": report_path.is_file(),
                 "history": _history_summary_for_case(case, history),
             }
@@ -904,6 +890,7 @@ def main() -> int:
                 entry["wine_log"] = {
                     "classification": wine_log.get("classification"),
                     "primary_signature": wine_log.get("primary_signature"),
+                    "normalized_primary_signature": wine_log.get("normalized_primary_signature"),
                 }
             entries.append(entry)
             lines.write(json.dumps(entry, sort_keys=True) + "\n")

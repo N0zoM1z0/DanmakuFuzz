@@ -113,7 +113,7 @@ The batch wrapper writes a parent artifact directory containing:
 - `summary.json` with aggregated classification counts, queue metadata, per-case locations,
   queue-side history annotations, a `headless_retail_matrix` summary keyed by the
   primary headless finding, and a `retail_signature_matrix` summary keyed by the
-  observed retail crash/live signature.
+  observed retail crash/live signature after thread/address normalization.
 
 ## Current limitation
 
@@ -139,7 +139,8 @@ It now carries extra evidence on top of that window layer:
   signature even if the window census alone would be weak;
 - `abnormal-exit` when the retail process exits with a non-zero observed code
   without a stronger crash-dialog/log signature;
-- `wine_log.primary_signature` in `report.json` for a compact crash fingerprint.
+- `wine_log.primary_signature` plus `wine_log.normalized_primary_signature` in
+  `report.json` for both the raw Wine line and a de-noised grouping key.
 
 It still does not prove:
 

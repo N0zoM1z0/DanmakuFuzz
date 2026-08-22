@@ -13,6 +13,7 @@ import time
 from ..corpus.pbg3 import Pbg3Archive
 from ..headless.baseline import DEFAULT_GAME_DIR
 from ..repo import ARTIFACTS_DIR, ensure_directory
+from .signatures import normalize_wine_primary_signature, retail_signature_key
 
 
 RETAIL_EXECUTABLE_CANDIDATES = (
@@ -356,6 +357,10 @@ def _run_launch_only(
         "elapsed_seconds": time.time() - started,
         "dry_run": False,
         "termination_reason": final_oracle["classification"],
+        "retail_signature_key": retail_signature_key(
+            final_oracle["classification"],
+            wine_log.get("primary_signature") if isinstance(wine_log.get("primary_signature"), str) else None,
+        ),
         "oracle": final_oracle,
         "wine_log": wine_log,
     }
@@ -554,6 +559,7 @@ def _summarize_wine_log(log_path: Path, *, max_lines: int = 8) -> dict[str, obje
             "classification": "missing-log",
             "interesting": False,
             "primary_signature": None,
+            "normalized_primary_signature": None,
             "crash_lines": [],
             "error_lines": [],
         }
@@ -576,6 +582,9 @@ def _summarize_wine_log(log_path: Path, *, max_lines: int = 8) -> dict[str, obje
         "classification": "wine-crash-log" if crash_lines else "no-crash-signature",
         "interesting": bool(crash_lines),
         "primary_signature": crash_lines[0] if crash_lines else None,
+        "normalized_primary_signature": (
+            normalize_wine_primary_signature(crash_lines[0]) if crash_lines else None
+        ),
         "crash_lines": crash_lines,
         "error_lines": error_lines,
     }
@@ -630,6 +639,7 @@ def _classify_retail_outcome(
         "window_oracle_classification": window_classification,
         "wine_log_classification": wine_log.get("classification"),
         "wine_log_primary_signature": wine_log.get("primary_signature"),
+        "wine_log_normalized_primary_signature": wine_log.get("normalized_primary_signature"),
         "observed_returncode": observed_returncode,
         "timed_out": timed_out,
     }
@@ -985,6 +995,10 @@ def _run_retail_with_practice_control(
         "elapsed_seconds": time.time() - started,
         "dry_run": False,
         "termination_reason": final_oracle["classification"],
+        "retail_signature_key": retail_signature_key(
+            final_oracle["classification"],
+            wine_log.get("primary_signature") if isinstance(wine_log.get("primary_signature"), str) else None,
+        ),
         "oracle": final_oracle,
         "wine_log": wine_log,
         "control": control_report,

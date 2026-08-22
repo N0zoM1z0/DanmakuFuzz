@@ -94,3 +94,7 @@ The retail runner now records a window census and classifies at least:
 - `crash-dialog`
 - `wine-crash-log`
 - `abnormal-exit`
+
+Crash signatures are normalized before they become batch-level
+`retail_signature_key`s, so the same Wine crash still groups together when only
+thread ids or fault addresses drift between replays.
