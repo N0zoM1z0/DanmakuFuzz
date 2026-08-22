@@ -4,6 +4,8 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import subprocess
+import sys
 from typing import Any
 
 from danmakufuzz.ecl_ir.model import RawInstruction
@@ -25,6 +27,7 @@ HEADLESS_SEED = 7
 MAX_TICKS = 600
 TIMEOUT_SECONDS = 5.0
 NEGATIVE_CONTROL_STAGE = 6
+RETAIL_REPRESENTATIVE_NAME = "stage5-difficulty-mask-96"
 
 EXPECTED_BASELINE_TAILS: dict[int, dict[str, Any]] = {
     1: {
@@ -507,6 +510,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-reuse-worker-game-dir", action="store_true")
     parser.add_argument("--stage", type=int, action="append", choices=range(1, 6))
     parser.add_argument("--no-stage6-negative-controls", action="store_true")
+    parser.add_argument("--retail", action="store_true")
+    parser.add_argument("--retail-representative", default=RETAIL_REPRESENTATIVE_NAME)
+    parser.add_argument("--retail-timeout-seconds", type=float, default=35.0)
     return parser.parse_args()
 
 
@@ -532,6 +538,7 @@ def main() -> int:
     baseline_summaries: dict[str, dict[str, Any]] = {}
     positive_runs: list[dict[str, Any]] = []
     negative_runs: list[dict[str, Any]] = []
+    result_paths_by_name: dict[str, Path] = {}
     cases_dir = artifact_dir / "cases"
     ensure_directory(cases_dir)
 
@@ -643,6 +650,7 @@ def main() -> int:
                 "tail": tail,
             }
         )
+        result_paths_by_name[str(rep["name"])] = (cases_dir / str(result["case_name"]) / "result.json").resolve()
 
     if not args.no_stage6_negative_controls:
         stage = NEGATIVE_CONTROL_STAGE
@@ -694,6 +702,44 @@ def main() -> int:
                 }
             )
 
+    retail_summary: dict[str, object] | None = None
+    if args.retail:
+        retail_representative = args.retail_representative
+        retail_result_path = result_paths_by_name.get(retail_representative)
+        if retail_result_path is None:
+            available = sorted(result_paths_by_name)
+            raise RuntimeError(
+                f"retail representative {retail_representative!r} was not built; available positives: {available}"
+            )
+        matched = next((rep for rep in positives if str(rep["name"]) == retail_representative), None)
+        if matched is None:
+            raise RuntimeError(f"missing representative metadata for {retail_representative}")
+        retail_stage = int(matched["stage"])
+        retail_dir = artifact_dir / "retail"
+        command = [
+            sys.executable,
+            "-m",
+            "danmakufuzz.retail.confirm_case",
+            "--result",
+            str(retail_result_path),
+            "--artifact-dir",
+            str(retail_dir.resolve()),
+            "--practice-stage",
+            str(retail_stage),
+            "--difficulty",
+            "3",
+            "--timeout-seconds",
+            str(args.retail_timeout_seconds),
+        ]
+        subprocess.run(command, check=True)
+        retail_summary = {
+            "representative": retail_representative,
+            "stage": retail_stage,
+            "artifact_dir": str(retail_dir.resolve()),
+            "report": str((retail_dir / "report.json").resolve()),
+            "command": command,
+        }
+
     summary = {
         "finding": "semantic/stages1-5-opening-op97-shared-segv-shortfall-basin",
         "target_path": {"sub_index": TARGET_PATH[0], "instruction_index": TARGET_PATH[1]},
@@ -705,6 +751,8 @@ def main() -> int:
         "positive_runs": positive_runs,
         "negative_controls": negative_runs,
     }
+    if retail_summary is not None:
+        summary["retail"] = retail_summary
     summary_path = artifact_dir / "summary.json"
     summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2))

@@ -64,6 +64,16 @@ PYTHONPATH=src python3 findings/semantic/stages1-5-opening-op97-shared-segv-shor
   --stage 5
 ```
 
+To also drive one representative through the existing retail Practice workflow
+under Wine:
+
+```sh
+PYTHONPATH=src python3 findings/semantic/stages1-5-opening-op97-shared-segv-shortfall-basin/reproduce.py \
+  --stage 5 \
+  --no-stage6-negative-controls \
+  --retail
+```
+
 Tracked compact payload patches:
 
 - `payload_stage1_instruction_time_4096.json`
@@ -90,6 +100,8 @@ Current local evidence:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-clusters/20260822T222333Z/summary.json`
 - local reproduce summary:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/summary.json`
+- retail representative report:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail/report.json`
 
 Current interpretation:
 
@@ -98,4 +110,10 @@ Current interpretation:
   exact difficulty-mask edit all land in the same opening crash basin;
 - Stage 6 staying clean under the same edits suggests this is a real
   stage-clustered structural weakness, not a universal “mutate anything and
-  crash” story.
+  crash” story;
+- retail: one Stage 5 representative (`stage5-difficulty-mask-96`) now has a
+  Wine confirmation artifact, but the current retail oracle classifies it as
+  `game-window-live` rather than a crash signature. The game window stayed
+  alive, the progress probe saw motion (`pixel_change_ratio ≈ 0.161`), and the
+  run timed out at the retail harness boundary instead of surfacing a direct
+  exception dialog or Wine crash line.
