@@ -35,5 +35,6 @@ minimized cases through the same retail path and aggregate classifications into
 `results.jsonl` / `summary.json`, with queue shaping such as interesting-only
 filtering and one-sample-per-finding prioritization. Retail reports now also
 carry compact Wine crash signatures plus a headless-finding-to-retail summary
-matrix at the batch level. Milestone 7 remains open until the retail
+matrix at the batch level, and the replay queue can consult prior retail
+history to skip already confirmed sources or findings. Milestone 7 remains open until the retail
 oracle grows beyond the current window/dialog layer.

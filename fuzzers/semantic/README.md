@@ -67,6 +67,17 @@ PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
   --list-only
 ```
 
+Load prior retail summaries/reports and skip source cases that already have a
+retail confirmation with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
+  --history artifacts/tmp-retail-oracle2-smoke.V69OIr \
+  --skip-known-source \
+  --list-only \
+  --result artifacts/semantic-minimized/bullet-sprite-16-s01-i0003/summary.json
+```
+
 Drive one Stage 6 semantic case into retail Practice Lunatic / Reimu A with:
 
 ```sh

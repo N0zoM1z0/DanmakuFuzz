@@ -29,7 +29,8 @@ Retail state must stay isolated:
 It discovers `result.json` / `summary.json` inputs, runs them sequentially in isolated
 artifact-local workers, and emits a batch-level `summary.json` plus `results.jsonl`.
 It can also reorder the replay queue by headless interestingness / finding severity,
-filter by finding kind, and cap duplicate replays per finding.
+filter by finding kind, cap duplicate replays per finding, and load prior retail
+history so already-confirmed cases can be surfaced or skipped before spending more Wine time.
 
 Supported inputs:
 
@@ -85,6 +86,17 @@ PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
   --list-only
 ```
 
+Example queue preview that loads prior retail outcomes and skips exact sources
+already confirmed before:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
+  --history artifacts/tmp-retail-oracle2-smoke.V69OIr \
+  --skip-known-source \
+  --list-only \
+  --result artifacts/semantic-minimized/bullet-sprite-16-s01-i0003/summary.json
+```
+
 Each run writes an isolated artifact directory containing:
 
 - `game/` with patched retail archives;
@@ -99,7 +111,9 @@ The batch wrapper writes a parent artifact directory containing:
 - one child artifact directory per case;
 - `results.jsonl` with one summary row per replayed case;
 - `summary.json` with aggregated classification counts, queue metadata, per-case locations,
-  and a `headless_retail_matrix` summary keyed by the primary headless finding.
+  queue-side history annotations, a `headless_retail_matrix` summary keyed by the
+  primary headless finding, and a `retail_signature_matrix` summary keyed by the
+  observed retail crash/live signature.
 
 ## Current limitation
 

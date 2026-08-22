@@ -72,6 +72,24 @@ class QueueCase:
         }
 
 
+@dataclass(frozen=True)
+class RetailHistoryCase:
+    origin_path: str
+    case_name: str | None
+    source_keys: tuple[str, ...]
+    primary_finding_key: str | None
+    classification: str
+    retail_signature_key: str
+    wine_log_primary_signature: str | None
+
+
+@dataclass(frozen=True)
+class RetailHistoryIndex:
+    cases: tuple[RetailHistoryCase, ...]
+    by_source: dict[str, tuple[RetailHistoryCase, ...]]
+    by_finding: dict[str, tuple[RetailHistoryCase, ...]]
+
+
 def _default_artifact_dir() -> Path:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return ARTIFACTS_DIR / "retail-batch" / stamp
@@ -90,6 +108,21 @@ def _case_label(result_path: Path) -> str:
     if result_path.name == "result.json":
         return result_path.parent.name
     return result_path.stem
+
+
+def _normalize_signature_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = " ".join(value.split())
+    return normalized or None
+
+
+def _retail_signature_key(classification: str | None, primary_signature: str | None) -> str:
+    normalized_classification = classification or "unknown"
+    normalized_signature = _normalize_signature_text(primary_signature)
+    if normalized_signature is None:
+        return normalized_classification
+    return f"{normalized_classification}:{normalized_signature}"
 
 
 def _finding_key(kind: str | None, detail: str | None) -> str:
@@ -196,6 +229,20 @@ def _queue_case_from_result(result_path: Path, order_index: int) -> QueueCase:
     )
 
 
+def _queue_source_keys(case: QueueCase) -> tuple[str, ...]:
+    ordered: list[str] = [str(case.result_path)]
+    if case.source_result is not None:
+        ordered.append(case.source_result)
+    unique: list[str] = []
+    seen: set[str] = set()
+    for key in ordered:
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(key)
+    return tuple(unique)
+
+
 def _discover_results(result_args: list[Path], from_minimized: bool) -> list[Path]:
     discovered: list[Path] = []
     for item in result_args:
@@ -220,6 +267,170 @@ def _discover_results(result_args: list[Path], from_minimized: bool) -> list[Pat
     return unique
 
 
+def _discover_history_files(history_args: list[Path]) -> list[Path]:
+    discovered: list[Path] = []
+    for item in history_args:
+        resolved = item.resolve()
+        if resolved.is_file():
+            discovered.append(resolved)
+            continue
+        if resolved.is_dir():
+            discovered.extend(sorted(resolved.rglob("summary.json")))
+            discovered.extend(sorted(resolved.rglob("report.json")))
+            continue
+        raise FileNotFoundError(f"retail history input does not exist: {resolved}")
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for path in discovered:
+        if path in seen:
+            continue
+        seen.add(path)
+        unique.append(path)
+    return unique
+
+
+def _history_case(
+    *,
+    origin_path: Path,
+    case_name: str | None,
+    source_keys: list[str],
+    primary_finding_key: str | None,
+    classification: str | None,
+    primary_signature: str | None,
+) -> RetailHistoryCase | None:
+    if not isinstance(classification, str) or not classification:
+        return None
+    unique_source_keys: list[str] = []
+    seen: set[str] = set()
+    for key in source_keys:
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique_source_keys.append(key)
+    return RetailHistoryCase(
+        origin_path=str(origin_path),
+        case_name=case_name,
+        source_keys=tuple(unique_source_keys),
+        primary_finding_key=primary_finding_key,
+        classification=classification,
+        retail_signature_key=_retail_signature_key(classification, primary_signature),
+        wine_log_primary_signature=_normalize_signature_text(primary_signature),
+    )
+
+
+def _history_cases_from_batch_summary(path: Path, data: dict[str, object]) -> list[RetailHistoryCase]:
+    if data.get("schema") != "danmakufuzz-retail-batch-v1":
+        return []
+    entries = data.get("entries")
+    if not isinstance(entries, list):
+        return []
+    history_cases: list[RetailHistoryCase] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        primary = entry.get("primary_finding")
+        primary_finding_key = primary.get("key") if isinstance(primary, dict) and isinstance(primary.get("key"), str) else None
+        wine_log = entry.get("wine_log")
+        primary_signature = (
+            wine_log.get("primary_signature")
+            if isinstance(wine_log, dict) and isinstance(wine_log.get("primary_signature"), str)
+            else None
+        )
+        source_keys = [
+            value
+            for value in (
+                entry.get("result"),
+                entry.get("source_result"),
+            )
+            if isinstance(value, str)
+        ]
+        history_case = _history_case(
+            origin_path=path,
+            case_name=entry.get("case_name") if isinstance(entry.get("case_name"), str) else None,
+            source_keys=source_keys,
+            primary_finding_key=primary_finding_key,
+            classification=entry.get("classification") if isinstance(entry.get("classification"), str) else None,
+            primary_signature=primary_signature,
+        )
+        if history_case is not None:
+            history_cases.append(history_case)
+    return history_cases
+
+
+def _history_cases_from_retail_report(path: Path, data: dict[str, object]) -> list[RetailHistoryCase]:
+    run = data.get("run")
+    if not isinstance(run, dict):
+        return []
+    wine_log = run.get("wine_log")
+    primary_signature = (
+        wine_log.get("primary_signature")
+        if isinstance(wine_log, dict) and isinstance(wine_log.get("primary_signature"), str)
+        else None
+    )
+    classification = run.get("termination_reason")
+    if not isinstance(classification, str):
+        oracle = run.get("oracle")
+        if isinstance(oracle, dict) and isinstance(oracle.get("classification"), str):
+            classification = oracle["classification"]
+        else:
+            classification = None
+    source_keys = [
+        value
+        for value in (
+            data.get("source_result"),
+            data.get("semantic_source_result"),
+        )
+        if isinstance(value, str)
+    ]
+    history_case = _history_case(
+        origin_path=path,
+        case_name=path.parent.name,
+        source_keys=source_keys,
+        primary_finding_key=None,
+        classification=classification,
+        primary_signature=primary_signature,
+    )
+    return [history_case] if history_case is not None else []
+
+
+def _load_history_index(history_args: list[Path]) -> tuple[RetailHistoryIndex, list[str]]:
+    files = _discover_history_files(history_args)
+    parsed_cases: list[RetailHistoryCase] = []
+    for path in files:
+        data = _load_report(path)
+        parsed_cases.extend(_history_cases_from_batch_summary(path, data))
+        parsed_cases.extend(_history_cases_from_retail_report(path, data))
+    deduped_cases: dict[tuple[tuple[str, ...], str, str], RetailHistoryCase] = {}
+    for case in parsed_cases:
+        fingerprint = (
+            case.source_keys,
+            case.classification,
+            case.retail_signature_key,
+        )
+        existing = deduped_cases.get(fingerprint)
+        if existing is None:
+            deduped_cases[fingerprint] = case
+            continue
+        if existing.primary_finding_key is None and case.primary_finding_key is not None:
+            deduped_cases[fingerprint] = case
+    unique_cases = list(deduped_cases.values())
+    by_source: dict[str, list[RetailHistoryCase]] = {}
+    by_finding: dict[str, list[RetailHistoryCase]] = {}
+    for case in unique_cases:
+        for source_key in case.source_keys:
+            by_source.setdefault(source_key, []).append(case)
+        if case.primary_finding_key is not None:
+            by_finding.setdefault(case.primary_finding_key, []).append(case)
+    return (
+        RetailHistoryIndex(
+            cases=tuple(unique_cases),
+            by_source={key: tuple(value) for key, value in by_source.items()},
+            by_finding={key: tuple(value) for key, value in by_finding.items()},
+        ),
+        [str(path) for path in files],
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Replay multiple semantic/minimized cases through the retail confirmation runner."
@@ -238,6 +449,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--artifact-dir", type=Path)
     parser.add_argument("--source-game-dir", type=Path)
+    parser.add_argument(
+        "--history",
+        type=Path,
+        action="append",
+        default=[],
+        help="retail summary.json / report.json, or a directory to scan recursively for prior retail outcomes",
+    )
     parser.add_argument("--practice-stage", type=int, choices=range(1, 7))
     parser.add_argument("--difficulty", type=int, choices=range(4))
     parser.add_argument("--timeout-seconds", type=float)
@@ -269,6 +487,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="print the selected replay queue and write summary.json without launching retail workers",
     )
+    parser.add_argument(
+        "--skip-known-source",
+        action="store_true",
+        help="skip queue cases whose semantic/minimized source already appears in retail history",
+    )
+    parser.add_argument(
+        "--skip-known-finding",
+        action="store_true",
+        help="skip queue cases whose primary headless finding already appears in prior retail batch history",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument(
@@ -280,7 +508,58 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _select_queue_cases(results: list[Path], args: argparse.Namespace) -> list[QueueCase]:
+def _history_subset(
+    *,
+    hits: tuple[RetailHistoryCase, ...],
+    limit: int = 3,
+) -> dict[str, object]:
+    classifications: Counter[str] = Counter()
+    signatures: Counter[str] = Counter()
+    examples: list[dict[str, object]] = []
+    for hit in hits:
+        classifications[hit.classification] += 1
+        signatures[hit.retail_signature_key] += 1
+        if len(examples) < limit:
+            examples.append(
+                {
+                    "case_name": hit.case_name,
+                    "origin_path": hit.origin_path,
+                    "classification": hit.classification,
+                    "retail_signature_key": hit.retail_signature_key,
+                }
+            )
+    return {
+        "hits": len(hits),
+        "classifications": dict(sorted(classifications.items())),
+        "retail_signatures": dict(sorted(signatures.items())),
+        "examples": examples,
+    }
+
+
+def _history_summary_for_case(case: QueueCase, history: RetailHistoryIndex) -> dict[str, object]:
+    source_hits_collected: list[RetailHistoryCase] = []
+    seen_source_hits: set[tuple[str, str, str]] = set()
+    for key in _queue_source_keys(case):
+        for hit in history.by_source.get(key, ()):
+            fingerprint = (hit.origin_path, hit.case_name or "", hit.retail_signature_key)
+            if fingerprint in seen_source_hits:
+                continue
+            seen_source_hits.add(fingerprint)
+            source_hits_collected.append(hit)
+    finding_hits = history.by_finding.get(case.primary_finding_key, ())
+    return {
+        "source": _history_subset(hits=tuple(source_hits_collected)),
+        "finding": _history_subset(hits=finding_hits),
+    }
+
+
+def _queue_case_summary(case: QueueCase, history: RetailHistoryIndex) -> dict[str, object]:
+    summary = case.to_summary()
+    summary["history"] = _history_summary_for_case(case, history)
+    return summary
+
+
+def _select_queue_cases(results: list[Path], args: argparse.Namespace, history: RetailHistoryIndex) -> list[QueueCase]:
     queue = [_queue_case_from_result(path, index) for index, path in enumerate(results, start=1)]
     if args.interesting_only:
         queue = [case for case in queue if case.interesting]
@@ -290,6 +569,18 @@ def _select_queue_cases(results: list[Path], args: argparse.Namespace) -> list[Q
             case
             for case in queue
             if any(key.split(":", 1)[0] in allowed for key in case.finding_keys)
+        ]
+    if args.skip_known_source:
+        queue = [
+            case
+            for case in queue
+            if not any(history.by_source.get(key) for key in _queue_source_keys(case))
+        ]
+    if args.skip_known_finding:
+        queue = [
+            case
+            for case in queue
+            if not history.by_finding.get(case.primary_finding_key)
         ]
     if args.priority_order == "priority":
         queue = sorted(queue, key=lambda case: case.priority_key())
@@ -360,6 +651,104 @@ def _headless_retail_matrix(entries: list[dict[str, object]]) -> list[dict[str, 
     return rows
 
 
+def _retail_signature_matrix(entries: list[dict[str, object]]) -> list[dict[str, object]]:
+    grouped: dict[str, dict[str, object]] = {}
+    for entry in entries:
+        retail_signature_key = (
+            entry.get("retail_signature_key")
+            if isinstance(entry.get("retail_signature_key"), str)
+            else entry.get("classification")
+            if isinstance(entry.get("classification"), str)
+            else "unknown"
+        )
+        group = grouped.setdefault(
+            retail_signature_key,
+            {
+                "retail_signature_key": retail_signature_key,
+                "cases": 0,
+                "headless_findings": Counter(),
+                "examples": [],
+            },
+        )
+        group["cases"] += 1
+        primary = entry.get("primary_finding")
+        if isinstance(primary, dict) and isinstance(primary.get("key"), str):
+            group["headless_findings"][primary["key"]] += 1
+        else:
+            group["headless_findings"]["unknown"] += 1
+        examples = group["examples"]
+        if isinstance(examples, list) and len(examples) < 3:
+            examples.append(
+                {
+                    "case_name": entry.get("case_name"),
+                    "classification": entry.get("classification"),
+                    "artifact_dir": entry.get("artifact_dir"),
+                }
+            )
+    rows: list[dict[str, object]] = []
+    for key in sorted(grouped):
+        group = grouped[key]
+        rows.append(
+            {
+                "retail_signature_key": key,
+                "cases": group["cases"],
+                "headless_findings": dict(sorted(group["headless_findings"].items())),
+                "examples": group["examples"],
+            }
+        )
+    return rows
+
+
+def _queue_options_dict(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        "priority_order": args.priority_order,
+        "interesting_only": args.interesting_only,
+        "finding_kind": args.finding_kind,
+        "max_per_finding": args.max_per_finding,
+        "limit": args.limit,
+        "skip_known_source": args.skip_known_source,
+        "skip_known_finding": args.skip_known_finding,
+        "list_only": args.list_only,
+    }
+
+
+def _write_summary(
+    *,
+    summary_path: Path,
+    artifact_dir: Path,
+    results: list[Path],
+    args: argparse.Namespace,
+    history_files: list[str],
+    history_case_count: int,
+    queue_summary: list[dict[str, object]],
+    entries: list[dict[str, object]],
+    classifications: dict[str, int],
+    stopped_early: bool,
+    results_jsonl: str | None,
+) -> None:
+    summary = {
+        "schema": "danmakufuzz-retail-batch-v1",
+        "artifact_dir": str(artifact_dir),
+        "results_jsonl": results_jsonl,
+        "inputs": [str(path) for path in results],
+        "queue_options": _queue_options_dict(args),
+        "history": {
+            "inputs": history_files,
+            "cases_loaded": history_case_count,
+        },
+        "cases_selected": len(queue_summary),
+        "cases_attempted": len(entries),
+        "classifications": classifications,
+        "stopped_early": stopped_early,
+        "headless_retail_matrix": _headless_retail_matrix(entries),
+        "retail_signature_matrix": _retail_signature_matrix(entries),
+        "queue": queue_summary,
+        "entries": entries,
+    }
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(summary, indent=2))
+
+
 def main() -> int:
     args = parse_args()
     if not args.result and not args.from_minimized:
@@ -368,9 +757,8 @@ def main() -> int:
     results = _discover_results(args.result, args.from_minimized)
     if not results:
         raise ValueError("retail batch did not find any result.json / summary.json inputs")
-    queue = _select_queue_cases(results, args)
-    if not queue:
-        raise ValueError("retail batch filters removed every discovered result")
+    history, history_files = _load_history_index(args.history)
+    queue = _select_queue_cases(results, args, history)
 
     artifact_dir = (args.artifact_dir or _default_artifact_dir()).resolve()
     ensure_directory(artifact_dir)
@@ -393,30 +781,36 @@ def main() -> int:
     if args.dry_run:
         base_command.append("--dry-run")
 
-    queue_summary = [case.to_summary() for case in queue]
+    queue_summary = [_queue_case_summary(case, history) for case in queue]
+    if not queue:
+        _write_summary(
+            summary_path=summary_path,
+            artifact_dir=artifact_dir,
+            results=results,
+            args=args,
+            history_files=history_files,
+            history_case_count=len(history.cases),
+            queue_summary=queue_summary,
+            entries=[],
+            classifications={},
+            stopped_early=False,
+            results_jsonl=None,
+        )
+        return 0
     if args.list_only:
-        summary = {
-            "schema": "danmakufuzz-retail-batch-v1",
-            "artifact_dir": str(artifact_dir),
-            "results_jsonl": None,
-            "inputs": [str(path) for path in results],
-            "queue_options": {
-                "priority_order": args.priority_order,
-                "interesting_only": args.interesting_only,
-                "finding_kind": args.finding_kind,
-                "max_per_finding": args.max_per_finding,
-                "limit": args.limit,
-                "list_only": True,
-            },
-            "cases_selected": len(queue),
-            "cases_attempted": 0,
-            "classifications": {},
-            "stopped_early": False,
-            "queue": queue_summary,
-            "entries": [],
-        }
-        summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-        print(json.dumps(summary, indent=2))
+        _write_summary(
+            summary_path=summary_path,
+            artifact_dir=artifact_dir,
+            results=results,
+            args=args,
+            history_files=history_files,
+            history_case_count=len(history.cases),
+            queue_summary=queue_summary,
+            entries=[],
+            classifications={},
+            stopped_early=False,
+            results_jsonl=None,
+        )
         return 0
 
     entries: list[dict[str, object]] = []
@@ -475,6 +869,11 @@ def main() -> int:
                 if isinstance(oracle_classification, str)
                 else "unknown"
             )
+            primary_signature = (
+                wine_log.get("primary_signature")
+                if isinstance(wine_log, dict) and isinstance(wine_log.get("primary_signature"), str)
+                else None
+            )
             classifications[classification] += 1
             entry = {
                 "index": index,
@@ -495,7 +894,9 @@ def main() -> int:
                 "stdout": str(stdout_path),
                 "returncode": completed.returncode,
                 "classification": classification,
+                "retail_signature_key": _retail_signature_key(classification, primary_signature),
                 "report_present": report_path.is_file(),
+                "history": _history_summary_for_case(case, history),
             }
             if isinstance(run_oracle, dict):
                 entry["retail_oracle"] = run_oracle
@@ -511,29 +912,19 @@ def main() -> int:
                 stopped_early = True
                 break
 
-    summary = {
-        "schema": "danmakufuzz-retail-batch-v1",
-        "artifact_dir": str(artifact_dir),
-        "results_jsonl": str(lines_path),
-        "inputs": [str(path) for path in results],
-        "queue_options": {
-            "priority_order": args.priority_order,
-            "interesting_only": args.interesting_only,
-            "finding_kind": args.finding_kind,
-            "max_per_finding": args.max_per_finding,
-            "limit": args.limit,
-            "list_only": False,
-        },
-        "cases_selected": len(queue),
-        "cases_attempted": len(entries),
-        "classifications": dict(sorted(classifications.items())),
-        "stopped_early": stopped_early,
-        "headless_retail_matrix": _headless_retail_matrix(entries),
-        "queue": queue_summary,
-        "entries": entries,
-    }
-    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(summary, indent=2))
+    _write_summary(
+        summary_path=summary_path,
+        artifact_dir=artifact_dir,
+        results=results,
+        args=args,
+        history_files=history_files,
+        history_case_count=len(history.cases),
+        queue_summary=queue_summary,
+        entries=entries,
+        classifications=dict(sorted(classifications.items())),
+        stopped_early=stopped_early,
+        results_jsonl=str(lines_path),
+    )
     return 0
 
 
