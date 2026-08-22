@@ -408,6 +408,128 @@ def _capture_screenshot(
     return screenshot_path
 
 
+def _capture_window_census(
+    *,
+    artifact_dir: Path,
+    display: str,
+    xdotool: Path,
+    xprop: Path,
+    xwininfo: Path,
+) -> dict[str, object]:
+    environment = {**os.environ, "DISPLAY": display}
+    search = subprocess.run(
+        [str(xdotool), "search", "--all", "--name", ".*"],
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    window_ids = sorted({line.strip() for line in search.stdout.splitlines() if line.strip()})
+    windows: list[dict[str, object]] = []
+    for window_id in window_ids:
+        name_result = subprocess.run(
+            [str(xdotool), "getwindowname", window_id],
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        name = name_result.stdout.strip()
+        xprop_result = subprocess.run(
+            [str(xprop), "-id", window_id, "WM_CLASS", "_NET_WM_PID"],
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        wm_class = None
+        pid = None
+        for line in xprop_result.stdout.splitlines():
+            if line.startswith("WM_CLASS("):
+                _, _, value = line.partition("=")
+                wm_class = value.strip()
+            elif line.startswith("_NET_WM_PID("):
+                _, _, value = line.partition("=")
+                value = value.strip()
+                pid = int(value) if value.isdigit() else None
+        windows.append(
+            {
+                "window_id": window_id,
+                "name": name,
+                "wm_class": wm_class,
+                "pid": pid,
+            }
+        )
+
+    names_path = artifact_dir / "control-window-names.txt"
+    names_path.write_text(
+        "\n".join(window["name"] for window in windows) + ("\n" if windows else ""),
+        encoding="utf-8",
+    )
+    xwininfo_result = subprocess.run(
+        [str(xwininfo), "-root", "-tree"],
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    xwininfo_path = artifact_dir / "control-xwininfo.txt"
+    xwininfo_path.write_text(xwininfo_result.stdout, encoding="utf-8")
+    census_path = artifact_dir / "control-window-census.json"
+    census_payload = {
+        "display": display,
+        "windows": windows,
+        "window_names_path": str(names_path.resolve()),
+        "xwininfo_path": str(xwininfo_path.resolve()),
+    }
+    census_path.write_text(json.dumps(census_payload, indent=2) + "\n", encoding="utf-8")
+    return {
+        **census_payload,
+        "census_path": str(census_path.resolve()),
+    }
+
+
+def _classify_window_census(census: dict[str, object]) -> dict[str, object]:
+    windows = census.get("windows")
+    if not isinstance(windows, list):
+        return {"classification": "unknown", "interesting": False}
+    titles = [
+        window.get("name")
+        for window in windows
+        if isinstance(window, dict) and isinstance(window.get("name"), str)
+    ]
+    crash_titles = [
+        title
+        for title in titles
+        if any(token in title for token in ("プログラム エラー", "Program Error", "Wine Debugger"))
+    ]
+    game_titles = [title for title in titles if "東方紅魔郷" in title]
+    if crash_titles:
+        return {
+            "classification": "crash-dialog",
+            "interesting": True,
+            "crash_titles": crash_titles,
+            "game_titles": game_titles,
+        }
+    if game_titles:
+        return {
+            "classification": "game-window-live",
+            "interesting": False,
+            "crash_titles": [],
+            "game_titles": game_titles,
+        }
+    return {
+        "classification": "no-game-window",
+        "interesting": False,
+        "crash_titles": [],
+        "game_titles": [],
+    }
+
+
 def _wait_for_window(
     *,
     xdotool: Path,
@@ -504,6 +626,8 @@ def _drive_practice_stage(
     artifact_dir: Path,
     ffmpeg: Path,
     xdotool: Path,
+    xprop: Path,
+    xwininfo: Path,
     display: str,
     window_id: str,
     stage: int,
@@ -551,6 +675,14 @@ def _drive_practice_stage(
         display=display,
         name="control-06-after-stage-start",
     )
+    census = _capture_window_census(
+        artifact_dir=artifact_dir,
+        display=display,
+        xdotool=xdotool,
+        xprop=xprop,
+        xwininfo=xwininfo,
+    )
+    oracle = _classify_window_census(census)
     screenshots.append(str(final_screenshot.resolve()))
     return {
         "mode": "practice-stage",
@@ -559,6 +691,8 @@ def _drive_practice_stage(
         "window_id": window_id,
         "stage_entry_wait_seconds": stage_entry_wait_seconds,
         "entered_stage_screenshot": str(final_screenshot.resolve()),
+        "window_census": census,
+        "oracle": oracle,
         "steps": steps,
         "screenshots": screenshots,
     }
@@ -574,6 +708,8 @@ def _run_retail_with_practice_control(
     wineserver: Path,
     xvfb: Path,
     xdotool: Path,
+    xprop: Path,
+    xwininfo: Path,
     ffmpeg: Path,
     display: str,
     timeout_seconds: float,
@@ -612,6 +748,8 @@ def _run_retail_with_practice_control(
     game_process = None
     timed_out = False
     control_report = None
+    termination_reason = None
+    oracle_terminal = False
     started = time.time()
     try:
         xvfb_process, xvfb_report = _start_xvfb(
@@ -652,24 +790,33 @@ def _run_retail_with_practice_control(
                 artifact_dir=artifact_dir,
                 ffmpeg=ffmpeg,
                 xdotool=xdotool,
+                xprop=xprop,
+                xwininfo=xwininfo,
                 display=display,
                 window_id=window_id,
                 stage=practice_stage,
                 difficulty=difficulty,
                 stage_entry_wait_seconds=stage_entry_wait_seconds,
             )
-            remaining = max(0.0, timeout_seconds - (time.time() - started))
-            if game_process.poll() is None and remaining > 0:
-                try:
-                    game_process.wait(timeout=remaining)
-                except subprocess.TimeoutExpired:
+            oracle = control_report.get("oracle") if isinstance(control_report, dict) else None
+            classification = oracle.get("classification") if isinstance(oracle, dict) else None
+            termination_reason = classification
+            if classification == "crash-dialog":
+                oracle_terminal = True
+                timed_out = False
+            else:
+                remaining = max(0.0, timeout_seconds - (time.time() - started))
+                if game_process.poll() is None and remaining > 0:
+                    try:
+                        game_process.wait(timeout=remaining)
+                    except subprocess.TimeoutExpired:
+                        timed_out = True
+                elif game_process.poll() is None:
                     timed_out = True
-            elif game_process.poll() is None:
-                timed_out = True
         finally:
             game_log_handle.close()
     finally:
-        if game_process is not None and game_process.poll() is None:
+        if game_process is not None and game_process.poll() is None and not oracle_terminal:
             timed_out = True
         subprocess.run(
             [str(wineserver), "-k"],
@@ -715,6 +862,7 @@ def _run_retail_with_practice_control(
         "timed_out": timed_out,
         "elapsed_seconds": time.time() - started,
         "dry_run": False,
+        "termination_reason": termination_reason,
         "control": control_report,
     }
 
@@ -756,6 +904,16 @@ def parse_args() -> argparse.Namespace:
         "--xdotool",
         type=Path,
         default=Path(shutil.which("xdotool") or "xdotool"),
+    )
+    parser.add_argument(
+        "--xprop",
+        type=Path,
+        default=Path(shutil.which("xprop") or "xprop"),
+    )
+    parser.add_argument(
+        "--xwininfo",
+        type=Path,
+        default=Path(shutil.which("xwininfo") or "xwininfo"),
     )
     parser.add_argument(
         "--ffmpeg",
@@ -808,6 +966,8 @@ def main() -> int:
     wineserver = _command_path(args.wineserver)
     xvfb = _command_path(args.xvfb)
     xdotool = _command_path(args.xdotool)
+    xprop = _command_path(args.xprop)
+    xwininfo = _command_path(args.xwininfo)
     ffmpeg = _command_path(args.ffmpeg)
     display = args.display or _choose_display()
 
@@ -833,6 +993,8 @@ def main() -> int:
                 wineserver=wineserver,
                 xvfb=xvfb,
                 xdotool=xdotool,
+                xprop=xprop,
+                xwininfo=xwininfo,
                 ffmpeg=ffmpeg,
                 display=display,
                 timeout_seconds=args.timeout_seconds,

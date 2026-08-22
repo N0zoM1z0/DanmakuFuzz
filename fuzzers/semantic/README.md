@@ -56,3 +56,8 @@ PYTHONPATH=src python3 -m danmakufuzz.retail.confirm_case \
   --difficulty 3 \
   --timeout-seconds 20
 ```
+
+The retail runner now records a window census and classifies at least:
+
+- `game-window-live`
+- `crash-dialog`

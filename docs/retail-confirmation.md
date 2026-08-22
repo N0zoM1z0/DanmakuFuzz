@@ -63,6 +63,7 @@ Each run writes an isolated artifact directory containing:
 - `prefix/` with its Wine state;
 - `wineboot.log`, `wine.log`, and `xvfb.log` when live stage control runs;
 - `control-*.png` screenshots when Practice automation runs;
+- `control-window-census.json`, `control-window-names.txt`, and `control-xwininfo.txt` for post-start retail UI evidence;
 - `report.json` with payload hash, patched archive hash, and launch result.
 
 ## Current limitation
@@ -76,14 +77,21 @@ runner now proves all of these for Reimu A Practice:
 - deterministic keyboard automation can enter Practice Stage 1--6;
 - patched `ecldata6.ecl` can be carried all the way to Final Stage entry.
 
+It also has a first-pass retail oracle:
+
+- `game-window-live` when the main TH06 window remains live after the Practice
+  start sequence and observation delay;
+- `crash-dialog` when Wine exposes `プログラム エラー` or `Wine Debugger`
+  windows after stage start.
+
 It still does not prove:
 
 - generic route automation from Start through Ending;
-- memory-backed retail state sensing or robust crash classification;
+- memory-backed retail state sensing;
 - that every interesting case reproduces the same VM/opcode path as headless.
 
 The remaining missing pieces are:
 
 - route-play automation;
-- tighter oracles than screenshot/process-liveness;
+- tighter oracles than window/dialog sensing;
 - automatic replay of minimized interesting cases instead of one-off manual runs.
