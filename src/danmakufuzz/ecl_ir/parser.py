@@ -19,6 +19,13 @@ def _i32(data: bytes, offset: int) -> int:
     return int.from_bytes(data[offset:offset + 4], "little", signed=True)
 
 
+def _next_boundary(offset: int, boundaries: list[int], data_size: int) -> int:
+    for boundary in boundaries:
+        if boundary > offset:
+            return boundary
+    return data_size
+
+
 def parse_timeline(data: bytes, start: int, end: int) -> list[TimelineInstruction]:
     instructions: list[TimelineInstruction] = []
     cursor = start
@@ -84,13 +91,24 @@ def parse_ecl(data: bytes) -> EclFile:
     if any(offset >= len(data) for offset in sub_offsets):
         raise EclParseError("subroutine offset is outside the payload")
     sorted_offsets = sorted(sub_offsets)
+    nonzero_timeline_offsets = [offset for offset in timeline_offsets if offset != 0]
+    if not nonzero_timeline_offsets:
+        raise EclParseError("ECL has no timeline offset")
+    if any(offset >= len(data) for offset in nonzero_timeline_offsets):
+        raise EclParseError("timeline offset is outside the payload")
+
+    boundaries = sorted(set(sorted_offsets + nonzero_timeline_offsets + [len(data)]))
     timeline_start = timeline_offsets[0]
-    if not 0 <= timeline_start < min(sorted_offsets):
-        raise EclParseError("invalid timeline offset")
-    timeline = parse_timeline(data, timeline_start, min(sorted_offsets))
+    if timeline_start == 0:
+        raise EclParseError("primary timeline offset is zero")
+    if timeline_start < table_size:
+        raise EclParseError("primary timeline overlaps header")
+    timeline_end = _next_boundary(timeline_start, boundaries, len(data))
+    timeline = parse_timeline(data, timeline_start, timeline_end)
+
     subs: list[EclSubroutine] = []
-    for index, sub_offset in enumerate(sub_offsets):
-        end = sorted_offsets[sorted_offsets.index(sub_offset) + 1] if sub_offset != sorted_offsets[-1] else len(data)
+    for sub_offset in sub_offsets:
+        end = _next_boundary(sub_offset, boundaries, len(data))
         subs.append(parse_sub(data, sub_offset, end))
     return EclFile(
         sub_count=sub_count,

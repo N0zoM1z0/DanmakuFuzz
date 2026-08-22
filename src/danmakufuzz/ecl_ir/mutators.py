@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import struct
 
-from .model import EclFile, RawInstruction
+from .model import EclFile, EclSubroutine, RawInstruction
 
 
 OP_JUMP = 2
@@ -55,9 +54,18 @@ def _clone_with_mutated_instruction(
     instruction_index: int,
     instruction: RawInstruction,
 ) -> EclFile:
-    clone = ecl.clone()
-    clone.subs[sub_index].instructions[instruction_index] = instruction
-    return clone
+    subs = list(ecl.subs)
+    selected_sub = subs[sub_index]
+    instructions = list(selected_sub.instructions)
+    instructions[instruction_index] = instruction
+    subs[sub_index] = EclSubroutine(file_offset=selected_sub.file_offset, instructions=instructions)
+    return EclFile(
+        sub_count=ecl.sub_count,
+        main_count=ecl.main_count,
+        timeline_offsets=ecl.timeline_offsets,
+        timeline=ecl.timeline,
+        subs=subs,
+    )
 
 
 def generate_targeted_mutants(ecl: EclFile) -> list[Mutant]:
