@@ -36,3 +36,13 @@ Minimize a captured interesting case with:
 PYTHONPATH=src python3 -m danmakufuzz.semantic.minimize_case \
   --result artifacts/semantic/.../result.json
 ```
+
+Prepare or launch an isolated retail confirmation worker from either a
+semantic case or a minimized case with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.retail.confirm_case \
+  --result artifacts/semantic-minimized/.../summary.json \
+  --prepare-only \
+  --dry-run
+```

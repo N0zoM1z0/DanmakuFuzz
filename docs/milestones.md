@@ -24,4 +24,8 @@ the current IR mutator set expands to 6,061 targeted mutants across the retail
 corpus, and the semantic campaign lane can automatically surface process
 signals such as the zero-byte `ecldata6.ecl` `SIGSEGV` case. The parser lane
 now also has standalone PBG3, replay, and stage `.std` entrypoints for
-independent format validation.
+independent format validation. Retail handoff now has an isolated preparation
+runner that can rebuild `紅魔郷ST.DAT`/`峠杺嫿ST.DAT`, initialize a dedicated
+Wine prefix, and do launch-only confirmation from either semantic `result.json`
+or minimized `summary.json`, but milestone 7 remains open until stage entry is
+automated.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+from typing import Mapping
 
 
 class Pbg3Error(ValueError):
@@ -14,6 +15,8 @@ class Pbg3Entry:
     checksum: int
     data_offset: int
     uncompressed_size: int
+    unk1: int = 0
+    unk2: int = 0
 
 
 class _BitReader:
@@ -55,6 +58,60 @@ class _BitReader:
         return self._bit_offset
 
 
+class _BitWriter:
+    def __init__(self) -> None:
+        self._output = bytearray()
+        self._current = 0
+        self._count = 0
+
+    def write_bits(self, value: int, count: int) -> None:
+        if count < 0:
+            raise ValueError("bit count must be non-negative")
+        for shift in range(count - 1, -1, -1):
+            bit = (value >> shift) & 1
+            self._current = (self._current << 1) | bit
+            self._count += 1
+            if self._count == 8:
+                self._output.append(self._current)
+                self._current = 0
+                self._count = 0
+
+    def write_varint(self, value: int, *, width: int = 32) -> None:
+        widths = {8: 0b00, 16: 0b01, 24: 0b10, 32: 0b11}
+        if width not in widths:
+            raise ValueError(f"unsupported PBG3 varint width: {width}")
+        if value < 0 or value >= (1 << width):
+            raise ValueError(f"value {value} does not fit in {width} bits")
+        self.write_bits(widths[width], 2)
+        self.write_bits(value, width)
+
+    def write_string(self, value: str) -> None:
+        raw = value.encode("ascii")
+        if len(raw) >= 256:
+            raise ValueError("PBG3 filename exceeds its 256-byte field")
+        for byte in raw:
+            self.write_bits(byte, 8)
+        self.write_bits(0, 8)
+
+    def finish(self) -> bytes:
+        if self._count:
+            self._output.append(self._current << (8 - self._count))
+            self._current = 0
+            self._count = 0
+        return bytes(self._output)
+
+
+def _compress_literal_only(payload: bytes) -> tuple[bytes, int]:
+    writer = _BitWriter()
+    for byte in payload:
+        writer.write_bits(1, 1)
+        writer.write_bits(byte, 8)
+    writer.write_bits(0, 1)
+    writer.write_bits(0, 13)
+    compressed = writer.finish()
+    return compressed, sum(compressed) & 0xFFFFFFFF
+
+
 @dataclass(frozen=True)
 class Pbg3Archive:
     data: bytes
@@ -75,8 +132,8 @@ class Pbg3Archive:
         entries: list[Pbg3Entry] = []
         names: set[str] = set()
         for _ in range(count):
-            reader.read_varint()  # unk2
-            reader.read_varint()  # unk1
+            unk2 = reader.read_varint()
+            unk1 = reader.read_varint()
             checksum = reader.read_varint()
             data_offset = reader.read_varint()
             uncompressed_size = reader.read_varint()
@@ -91,6 +148,8 @@ class Pbg3Archive:
                 checksum=checksum,
                 data_offset=data_offset,
                 uncompressed_size=uncompressed_size,
+                unk1=unk1,
+                unk2=unk2,
             ))
         if any(left.data_offset >= right.data_offset for left, right in zip(entries, entries[1:], strict=False)):
             raise Pbg3Error("PBG3 entries are not in increasing data-offset order")
@@ -153,6 +212,66 @@ class Pbg3Archive:
                 f"{len(output)} != {entry.uncompressed_size}"
             )
         return bytes(output)
+
+    def replace(self, replacements: Mapping[str, bytes]) -> bytes:
+        missing = sorted(set(replacements) - {entry.filename for entry in self.entries})
+        if missing:
+            raise KeyError(f"PBG3 archive is missing replacement entries: {missing}")
+
+        compressed_entries: list[tuple[Pbg3Entry, bytes]] = []
+        for entry in self.entries:
+            payload = replacements.get(entry.filename)
+            if payload is None:
+                payload = self.extract_entry(entry)
+            compressed, checksum = _compress_literal_only(payload)
+            compressed_entries.append((
+                Pbg3Entry(
+                    filename=entry.filename,
+                    checksum=checksum,
+                    data_offset=0,
+                    uncompressed_size=len(payload),
+                    unk1=entry.unk1,
+                    unk2=entry.unk2,
+                ),
+                compressed,
+            ))
+
+        header_probe = _BitWriter()
+        header_probe.write_varint(len(compressed_entries), width=32)
+        header_probe.write_varint(0, width=32)
+        header_size = 4 + len(header_probe.finish())
+        data_offset = header_size
+        finalized_entries: list[Pbg3Entry] = []
+        data_blob = bytearray()
+        for entry, compressed in compressed_entries:
+            finalized_entries.append(Pbg3Entry(
+                filename=entry.filename,
+                checksum=entry.checksum,
+                data_offset=data_offset,
+                uncompressed_size=entry.uncompressed_size,
+                unk1=entry.unk1,
+                unk2=entry.unk2,
+            ))
+            data_blob += compressed
+            data_offset += len(compressed)
+
+        table_offset = header_size + len(data_blob)
+        writer = _BitWriter()
+        for entry in finalized_entries:
+            writer.write_varint(entry.unk2, width=32)
+            writer.write_varint(entry.unk1, width=32)
+            writer.write_varint(entry.checksum, width=32)
+            writer.write_varint(entry.data_offset, width=32)
+            writer.write_varint(entry.uncompressed_size, width=32)
+            writer.write_string(entry.filename)
+        table_blob = writer.finish()
+
+        header = bytearray(b"PBG3")
+        header_writer = _BitWriter()
+        header_writer.write_varint(len(finalized_entries), width=32)
+        header_writer.write_varint(table_offset, width=32)
+        header += header_writer.finish()
+        return bytes(header + data_blob + table_blob)
 
 
 def sha256_bytes(data: bytes) -> str:
