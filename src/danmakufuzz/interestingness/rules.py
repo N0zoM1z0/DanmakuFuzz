@@ -115,6 +115,31 @@ def _walk_numbers(value: Any, findings: list[Finding], path: str = "$") -> None:
             _walk_numbers(nested, findings, f"{path}[{index}]")
 
 
+def _stall_detail(record: dict[str, Any], *, frame: int, stall_window: int) -> str:
+    fields = [f"frame={frame}", f"window>={stall_window}"]
+    tick = record.get("tick")
+    if isinstance(tick, int):
+        fields.append(f"tick={tick}")
+    game_frame = record.get("game_frame")
+    if isinstance(game_frame, int):
+        fields.append(f"game_frame={game_frame}")
+    rng_generation = record.get("rng_generation")
+    if isinstance(rng_generation, int):
+        fields.append(f"rng_generation={rng_generation}")
+    for path in (
+        ("stage_vm", "loaded"),
+        ("stage_vm", "script_time"),
+        ("stage_vm", "instruction_index"),
+        ("ecl_timeline", "time"),
+        ("ecl_timeline", "next_time"),
+    ):
+        value = _nested_value(record, path)
+        if value is None:
+            continue
+        fields.append(f"{_path_label(path)}={value}")
+    return " ".join(fields)
+
+
 def score_trace(path: Path, *, stall_window: int = 240, bullet_limit: int = 1024, item_limit: int = 256) -> list[Finding]:
     findings: list[Finding] = []
     last_frame: int | None = None
@@ -133,6 +158,7 @@ def score_trace(path: Path, *, stall_window: int = 240, bullet_limit: int = 1024
                     repeated_frames = 0
                 last_frame = frame
                 if repeated_frames >= stall_window:
+                    findings.append(Finding("stalled-progress", _stall_detail(record, frame=frame, stall_window=stall_window)))
                     findings.append(Finding("stalled-frame", f"frame {frame} repeated >= {stall_window} times"))
                     break
             bullets = record.get("bullets")

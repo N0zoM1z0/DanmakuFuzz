@@ -14,12 +14,36 @@ def test_score_trace_flags_non_finite(tmp_path: Path) -> None:
 def test_score_trace_uses_game_frame_for_stall_detection(tmp_path: Path) -> None:
     trace = tmp_path / "trace.jsonl"
     rows = [
-        {"game_frame": 77, "bullets": []},
-        {"game_frame": 77, "bullets": []},
-        {"game_frame": 77, "bullets": []},
+        {
+            "tick": 100,
+            "game_frame": 77,
+            "rng_generation": 555,
+            "stage_vm": {"loaded": False, "script_time": 77, "instruction_index": 4},
+            "ecl_timeline": {"time": 77, "next_time": 80},
+            "bullets": [],
+        },
+        {
+            "tick": 101,
+            "game_frame": 77,
+            "rng_generation": 555,
+            "stage_vm": {"loaded": False, "script_time": 77, "instruction_index": 4},
+            "ecl_timeline": {"time": 77, "next_time": 80},
+            "bullets": [],
+        },
+        {
+            "tick": 102,
+            "game_frame": 77,
+            "rng_generation": 555,
+            "stage_vm": {"loaded": False, "script_time": 77, "instruction_index": 4},
+            "ecl_timeline": {"time": 77, "next_time": 80},
+            "bullets": [],
+        },
     ]
     trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
     findings = score_trace(trace, stall_window=2)
+    progress = next(finding for finding in findings if finding.kind == "stalled-progress")
+    assert "stage_vm.loaded=False" in progress.detail
+    assert "ecl_timeline.time=77" in progress.detail
     assert any(finding.kind == "stalled-frame" for finding in findings)
 
 
