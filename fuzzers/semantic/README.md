@@ -34,6 +34,12 @@ The `core` profile narrows mutation selection to portable control-flow, timing,
 bullet-count, drop-item, and `time-set` families. It skips structural payload
 damage and boss-only families by default.
 
+Add `--mutation-mode exploration` to switch from fixed targeted cases to the
+seeded sampler. That sampler still keeps semantic anchor values, but each site
+also mixes context-aware, relative, scaled, bit-flip, and wide random values.
+Use `--random-seed` to roam the sampler and `--samples-per-site` to control the
+per-site fanout without changing the surrounding campaign logic.
+
 Sweep that reusable family set across the playable retail seeds with:
 
 ```sh

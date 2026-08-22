@@ -306,8 +306,21 @@ def _dedupe_ints(values: list[int], *, minimum: int, maximum: int, current: int)
     return deduped
 
 
-def _sample_values(
+def _shuffle_filtered_values(
     values: list[int],
+    *,
+    current: int,
+    minimum: int,
+    maximum: int,
+    rng: random.Random,
+) -> list[int]:
+    candidates = _dedupe_ints(values, minimum=minimum, maximum=maximum, current=current)
+    rng.shuffle(candidates)
+    return candidates
+
+
+def _sample_value_groups(
+    groups: list[list[int]],
     *,
     current: int,
     minimum: int,
@@ -315,18 +328,63 @@ def _sample_values(
     budget: int,
     rng: random.Random,
 ) -> list[int]:
-    candidates = _dedupe_ints(values, minimum=minimum, maximum=maximum, current=current)
-    if budget <= 0 or len(candidates) <= budget:
-        return candidates
-    sampled = list(candidates)
-    rng.shuffle(sampled)
-    return sampled[:budget]
+    if budget <= 0:
+        return []
+
+    pending = [
+        _shuffle_filtered_values(
+            group,
+            current=current,
+            minimum=minimum,
+            maximum=maximum,
+            rng=rng,
+        )
+        for group in groups
+    ]
+    selected: list[int] = []
+    seen: set[int] = set()
+    while len(selected) < budget:
+        progressed = False
+        for group in pending:
+            while group and group[-1] in seen:
+                group.pop()
+            if not group:
+                continue
+            value = group.pop()
+            if value in seen:
+                continue
+            selected.append(value)
+            seen.add(value)
+            progressed = True
+            if len(selected) >= budget:
+                break
+        if not progressed:
+            break
+    return selected
 
 
 def _relative_values(current: int, deltas: tuple[int, ...]) -> list[int]:
     values = [current + delta for delta in deltas]
     values.append(-current)
     return values
+
+
+def _scaled_values(current: int, *, multipliers: tuple[int, ...], divisors: tuple[int, ...]) -> list[int]:
+    values = [current * factor for factor in multipliers]
+    for divisor in divisors:
+        if divisor == 0:
+            continue
+        values.append(int(current / divisor))
+    return values
+
+
+def _bitflip_values(current: int, *, bits: tuple[int, ...]) -> list[int]:
+    return [current ^ (1 << bit) for bit in bits]
+
+
+def _random_signed_bits(rng: random.Random, bit_width: int) -> int:
+    value = rng.getrandbits(bit_width)
+    return -value if rng.getrandbits(1) else value
 
 
 def _sample_signed_i32(
@@ -468,12 +526,56 @@ def _sample_signed_i32(
             255,
         ],
     }[family]
-    values = list(base)
+    anchor_values = list(base)
     if context_limit is not None:
-        values.extend([context_limit - 1, context_limit, context_limit + 1])
-    values.extend(_relative_values(current, (-4096, -1024, -256, -64, -16, -4, -1, 1, 4, 16, 64, 256, 1024, 4096)))
-    return _sample_values(
-        values,
+        anchor_values.extend([context_limit - 2, context_limit - 1, context_limit, context_limit + 1, context_limit + 2])
+    relative_values = _relative_values(
+        current,
+        (-4096, -2048, -1024, -256, -64, -16, -4, -1, 1, 4, 16, 64, 256, 1024, 2048, 4096),
+    )
+    scaled_values = _scaled_values(
+        current,
+        multipliers=(-8, -4, -2, 2, 4, 8),
+        divisors=(2, 4, 8),
+    )
+    available_bits = (0, 1, 2, 3, 4, 5, 7, 8, 11, 15, 16, 23, 30)
+    selected_bits = tuple(rng.sample(available_bits, k=min(8, len(available_bits))))
+    bitflip_values = _bitflip_values(current, bits=selected_bits)
+    random_local_values = [
+        current + rng.randint(-span, span)
+        for span in (3, 7, 15, 31, 63, 127, 255, 1023, 4095, 16383)
+    ]
+    random_extreme_values = [
+        rng.randint(-32, 32),
+        rng.randint(-512, 512),
+        _random_signed_bits(rng, 8),
+        _random_signed_bits(rng, 12),
+        _random_signed_bits(rng, 16),
+        _random_signed_bits(rng, 24),
+        _random_signed_bits(rng, 31),
+        ((1 << 31) - 1) - rng.randint(0, 255),
+        -(1 << 31) + rng.randint(0, 255),
+    ]
+    context_values: list[int] = []
+    if context_limit is not None and context_limit >= 0:
+        upper = max(context_limit + 4, 4)
+        context_values.extend(rng.randint(-2, upper) for _ in range(8))
+        context_values.extend([
+            context_limit // 2,
+            context_limit * 2,
+            current + context_limit,
+            current - context_limit,
+        ])
+    return _sample_value_groups(
+        [
+            anchor_values,
+            context_values,
+            relative_values,
+            scaled_values,
+            bitflip_values,
+            random_local_values,
+            random_extreme_values,
+        ],
         current=current,
         minimum=-(1 << 31),
         maximum=(1 << 31) - 1,
@@ -512,10 +614,37 @@ def _sample_signed_i16(
             1023,
         ],
     }[family]
-    values = list(base)
-    values.extend(_relative_values(current, (-128, -64, -16, -4, -1, 1, 4, 16, 64, 128)))
-    return _sample_values(
-        values,
+    relative_values = _relative_values(current, (-256, -128, -64, -16, -4, -1, 1, 4, 16, 64, 128, 256))
+    scaled_values = _scaled_values(
+        current,
+        multipliers=(-8, -4, -2, 2, 4, 8),
+        divisors=(2, 4, 8),
+    )
+    available_bits = (0, 1, 2, 3, 4, 5, 7, 8, 11, 14)
+    selected_bits = tuple(rng.sample(available_bits, k=min(6, len(available_bits))))
+    bitflip_values = _bitflip_values(current, bits=selected_bits)
+    random_local_values = [
+        current + rng.randint(-span, span)
+        for span in (3, 7, 15, 31, 63, 127, 255, 511)
+    ]
+    random_extreme_values = [
+        rng.randint(-32, 32),
+        rng.randint(-512, 512),
+        _random_signed_bits(rng, 8),
+        _random_signed_bits(rng, 12),
+        _random_signed_bits(rng, 15),
+        ((1 << 15) - 1) - rng.randint(0, 63),
+        -(1 << 15) + rng.randint(0, 63),
+    ]
+    return _sample_value_groups(
+        [
+            list(base),
+            relative_values,
+            scaled_values,
+            bitflip_values,
+            random_local_values,
+            random_extreme_values,
+        ],
         current=current,
         minimum=-(1 << 15),
         maximum=(1 << 15) - 1,
