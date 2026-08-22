@@ -1,0 +1,72 @@
+# Stage 3 cross-value `shoot-interval` tail extension
+
+Observed on August 22, 2026.
+
+This finding captures a prolonged late-stage scheduler tail on one generic
+Stage 3 timing site. On `ecldata3.ecl`, opcode `77` at `(sub=0,
+instruction=7)` originally uses `shoot-interval=200`. Two exact rebuilt values
+already push the same site into the same extended terminal shape:
+
+- `shoot-interval=192` is only `8` ticks below the retail value, but it still
+  keeps Stage 3 alive until `game_frame=1680` / `ecl_timeline.time=1680`;
+- `shoot-interval=2248` is far away numerically, but it lands in the same tail
+  shape with the same `ecl_timeline.next_time=1730`.
+
+The two traces are not byte-identical, but they share the same overall Stage 3
+extension pattern:
+
+- the baseline unloads at `game_frame=1345`, while both mutations continue for
+  another `335` frames;
+- both mutations first trip `stage-script-drift` and `ecl-timeline-drift` at
+  tick `1361`;
+- both end at `game_frame=1680` with the stage VM already unloaded and the
+  scheduler parked on `next_time=1730`.
+
+Rebuild the two exact payloads from the local baseline corpus and rerun the
+headless differential checks with:
+
+```sh
+PYTHONPATH=src python3 findings/semantic/stage3-shoot-interval-cross-value-tail-extension/reproduce.py
+```
+
+To also drive the smaller `shoot-interval=192` representative through retail
+Practice Stage 3 under Wine:
+
+```sh
+PYTHONPATH=src python3 findings/semantic/stage3-shoot-interval-cross-value-tail-extension/reproduce.py \
+  --retail
+```
+
+Tracked compact payload patches:
+
+- `payload_shoot_interval_192.json`
+- `payload_shoot_interval_2248.json`
+
+Current local evidence:
+
+- source exploration grid:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-core-grid-c/summary.json`
+- exact 1800-tick confirmation rerun:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exact-rerun/20260822T-stage23-recheck-a/summary.jsonl`
+- related Stage 3 structural findings:
+  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage3-call-sub-zero-in-range-next-time-negative/README.md`
+  and
+  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage3-jump-offset-zero-route-warp/README.md`
+
+Why this one matters:
+
+- the smaller representative is near-baseline (`200 -> 192`), so the tail
+  extension is not limited to absurd timer values;
+- the same generic timing site already has a cross-value “shared tail shape,”
+  even though the detailed score and late enemy state differ;
+- it gives the portable lane a Stage 3 timing failure mode that is distinct
+  from the negative-`next_time` sink.
+
+Current interpretation:
+
+- headless: clearly interesting and reproducible;
+- the shared part is the late tail extension to `1680 / 1730`, not one
+  identical full trace;
+- retail: not rerun yet from this exact finding directory, but the reproducer
+  is ready to drive the `shoot-interval=192` representative through Practice
+  Stage 3.
