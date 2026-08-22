@@ -78,6 +78,18 @@ PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
   --result artifacts/semantic-minimized/bullet-sprite-16-s01-i0003/summary.json
 ```
 
+Skip only when prior retail history predicts one stable normalized signature with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
+  --history artifacts/tmp-retail-batch-priority-smoke.51UKuj/summary.json \
+  --from-minimized \
+  --interesting-only \
+  --max-per-finding 1 \
+  --skip-known-signature \
+  --list-only
+```
+
 Drive one Stage 6 semantic case into retail Practice Lunatic / Reimu A with:
 
 ```sh

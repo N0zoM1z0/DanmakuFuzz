@@ -38,5 +38,7 @@ carry compact Wine crash signatures plus a headless-finding-to-retail summary
 matrix at the batch level, and the replay queue can consult prior retail
 history to skip already confirmed sources or findings. The retail signature key
 now also normalizes thread/address jitter in Wine crash lines before grouping.
+The replay queue can additionally skip only when prior retail history implies a
+single stable normalized signature for a source/finding cluster.
 Milestone 7 remains open until the retail
 oracle grows beyond the current window/dialog layer.

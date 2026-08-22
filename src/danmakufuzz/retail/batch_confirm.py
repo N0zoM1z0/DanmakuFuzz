@@ -483,6 +483,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="skip queue cases whose primary headless finding already appears in prior retail batch history",
     )
+    parser.add_argument(
+        "--skip-known-signature",
+        action="store_true",
+        help="skip queue cases whose source/finding history predicts one stable known retail signature",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument(
@@ -511,8 +516,8 @@ def _history_subset(
                     "case_name": hit.case_name,
                     "origin_path": hit.origin_path,
                     "classification": hit.classification,
-                "retail_signature_key": hit.retail_signature_key,
-            }
+                    "retail_signature_key": hit.retail_signature_key,
+                }
             )
     return {
         "hits": len(hits),
@@ -533,9 +538,46 @@ def _history_summary_for_case(case: QueueCase, history: RetailHistoryIndex) -> d
             seen_source_hits.add(fingerprint)
             source_hits_collected.append(hit)
     finding_hits = history.by_finding.get(case.primary_finding_key, ())
+    source_signature_counts = Counter(hit.retail_signature_key for hit in source_hits_collected)
+    finding_signature_counts = Counter(hit.retail_signature_key for hit in finding_hits)
+    signature_prediction = {
+        "available": False,
+        "stable": False,
+        "basis": None,
+        "retail_signature_key": None,
+        "candidate_count": 0,
+        "candidates": {},
+    }
+    if source_signature_counts:
+        signature_prediction = {
+            "available": True,
+            "stable": len(source_signature_counts) == 1,
+            "basis": "source",
+            "retail_signature_key": (
+                next(iter(source_signature_counts))
+                if len(source_signature_counts) == 1
+                else None
+            ),
+            "candidate_count": len(source_signature_counts),
+            "candidates": dict(sorted(source_signature_counts.items())),
+        }
+    elif finding_signature_counts:
+        signature_prediction = {
+            "available": True,
+            "stable": len(finding_signature_counts) == 1,
+            "basis": "finding",
+            "retail_signature_key": (
+                next(iter(finding_signature_counts))
+                if len(finding_signature_counts) == 1
+                else None
+            ),
+            "candidate_count": len(finding_signature_counts),
+            "candidates": dict(sorted(finding_signature_counts.items())),
+        }
     return {
         "source": _history_subset(hits=tuple(source_hits_collected)),
         "finding": _history_subset(hits=finding_hits),
+        "signature_prediction": signature_prediction,
     }
 
 
@@ -568,6 +610,19 @@ def _select_queue_cases(results: list[Path], args: argparse.Namespace, history: 
             for case in queue
             if not history.by_finding.get(case.primary_finding_key)
         ]
+    if args.skip_known_signature:
+        filtered: list[QueueCase] = []
+        for case in queue:
+            history_summary = _history_summary_for_case(case, history)
+            prediction = history_summary.get("signature_prediction")
+            if (
+                isinstance(prediction, dict)
+                and prediction.get("available") is True
+                and prediction.get("stable") is True
+            ):
+                continue
+            filtered.append(case)
+        queue = filtered
     if args.priority_order == "priority":
         queue = sorted(queue, key=lambda case: case.priority_key())
     else:
@@ -694,6 +749,7 @@ def _queue_options_dict(args: argparse.Namespace) -> dict[str, object]:
         "limit": args.limit,
         "skip_known_source": args.skip_known_source,
         "skip_known_finding": args.skip_known_finding,
+        "skip_known_signature": args.skip_known_signature,
         "list_only": args.list_only,
     }
 
