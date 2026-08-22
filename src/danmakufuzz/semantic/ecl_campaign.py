@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import signal
+import shutil
 import subprocess
 import time
 
@@ -279,6 +281,16 @@ def materialize_override(case_dir: Path, seed_name: str, payload: bytes) -> Path
     return override_dir
 
 
+def stage_active_override(game_dir: Path, seed_name: str, payload: bytes) -> Path:
+    worker_key = hashlib.sha256(str(game_dir.resolve()).encode("utf-8")).hexdigest()[:16]
+    active_override_dir = ARTIFACTS_DIR / "_active-overrides" / worker_key
+    if active_override_dir.exists():
+        shutil.rmtree(active_override_dir)
+    ensure_directory(active_override_dir / "data")
+    (active_override_dir / "data" / seed_name).write_bytes(payload)
+    return active_override_dir
+
+
 def write_case_result(case_dir: Path, result: dict[str, object]) -> None:
     (case_dir / "result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
 
@@ -310,6 +322,7 @@ def run_case(
     trace_path = case_dir / "trace.jsonl"
     log_path = case_dir / "run.log"
     override_dir = materialize_override(case_dir, seed_name, mutant.payload)
+    active_override_dir = stage_active_override(game_dir, seed_name, mutant.payload)
     command = build_command(
         binary=binary,
         game_dir=game_dir,
@@ -325,7 +338,7 @@ def run_case(
         continue_after_hit=continue_after_hit,
     )
     run_env = os.environ.copy()
-    run_env["DANMAKUFUZZ_OVERRIDE_DIR"] = str(override_dir.resolve())
+    run_env["DANMAKUFUZZ_OVERRIDE_DIR"] = str(active_override_dir.resolve())
 
     started_at = time.time()
     returncode: int | None = None
@@ -390,6 +403,7 @@ def run_case(
         "trace": str(trace_path.resolve()),
         "log": str(log_path.resolve()),
         "override_dir": str(override_dir.resolve()),
+        "active_override_dir": str(active_override_dir.resolve()),
         "findings": [{"kind": finding.kind, "detail": finding.detail} for finding in findings],
         "interesting": bool(findings),
     }

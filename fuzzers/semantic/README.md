@@ -106,6 +106,11 @@ Each case gets its own ignored artifact directory containing:
 - the combined runtime log;
 - a `result.json` summary.
 
+For runtime stability, the campaign now archives each payload under that case
+artifact path but stages the active override into one fixed per-worker
+directory before launching headless. That keeps the preserved payloads portable
+without letting per-case artifact path strings perturb the semantic run.
+
 The campaign root also writes `summary.jsonl` and `campaign.json`.
 
 Minimize a captured interesting case with:
