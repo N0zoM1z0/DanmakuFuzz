@@ -38,6 +38,7 @@ TAP_HOLD_SECONDS = 0.30
 TAP_SETTLE_SECONDS = 0.80
 DEFAULT_STARTUP_SECONDS = 5.0
 DEFAULT_STAGE_ENTRY_WAIT_SECONDS = 3.0
+DEFAULT_PROGRESS_PROBE_SECONDS = 2.0
 DEFAULT_SCREEN_SIZE = "1024x768x24"
 WINE_CRASH_LOG_TOKENS = (
     "unhandled page fault",
@@ -430,6 +431,58 @@ def _capture_screenshot(
     return screenshot_path
 
 
+def _decode_rgb24(ffmpeg: Path, image_path: Path) -> bytes:
+    result = subprocess.run(
+        [
+            str(ffmpeg),
+            "-loglevel",
+            "error",
+            "-i",
+            str(image_path),
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-",
+        ],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=True,
+    )
+    return result.stdout
+
+
+def _probe_screenshot_progress(
+    *,
+    ffmpeg: Path,
+    first_screenshot: Path,
+    second_screenshot: Path,
+    probe_seconds: float,
+) -> dict[str, object]:
+    first_rgb24 = _decode_rgb24(ffmpeg, first_screenshot)
+    second_rgb24 = _decode_rgb24(ffmpeg, second_screenshot)
+    if len(first_rgb24) != len(second_rgb24):
+        raise ValueError("progress probe screenshots decoded to different sizes")
+    first_sha256 = hashlib.sha256(first_rgb24).hexdigest()
+    second_sha256 = hashlib.sha256(second_rgb24).hexdigest()
+    total_pixels = len(first_rgb24) // 3
+    changed_pixels = sum(
+        first_rgb24[index:index + 3] != second_rgb24[index:index + 3]
+        for index in range(0, len(first_rgb24), 3)
+    )
+    return {
+        "probe_seconds": probe_seconds,
+        "first_screenshot": str(first_screenshot.resolve()),
+        "second_screenshot": str(second_screenshot.resolve()),
+        "first_pixel_sha256": first_sha256,
+        "second_pixel_sha256": second_sha256,
+        "total_pixels": total_pixels,
+        "changed_pixels": changed_pixels,
+        "pixel_change_ratio": (changed_pixels / total_pixels) if total_pixels else 0.0,
+        "identical_pixels": first_sha256 == second_sha256,
+    }
+
+
 def _capture_window_census(
     *,
     artifact_dir: Path,
@@ -550,6 +603,27 @@ def _classify_window_census(census: dict[str, object]) -> dict[str, object]:
         "crash_titles": [],
         "game_titles": [],
     }
+
+
+def _classify_control_observation(
+    census: dict[str, object],
+    *,
+    progress_probe: dict[str, object] | None,
+) -> dict[str, object]:
+    oracle = _classify_window_census(census)
+    if progress_probe is not None:
+        oracle["progress_probe"] = progress_probe
+    if (
+        oracle.get("classification") == "game-window-live"
+        and isinstance(progress_probe, dict)
+        and progress_probe.get("identical_pixels") is True
+    ):
+        return {
+            **oracle,
+            "classification": "game-window-static",
+            "interesting": True,
+        }
+    return oracle
 
 
 def _summarize_wine_log(log_path: Path, *, max_lines: int = 8) -> dict[str, object]:
@@ -748,6 +822,7 @@ def _drive_practice_stage(
     stage: int,
     difficulty: int,
     stage_entry_wait_seconds: float,
+    progress_probe_seconds: float,
 ) -> dict[str, object]:
     screenshots: list[str] = []
     steps: list[dict[str, object]] = []
@@ -790,6 +865,23 @@ def _drive_practice_stage(
         display=display,
         name="control-06-after-stage-start",
     )
+    screenshots.append(str(final_screenshot.resolve()))
+    progress_probe = None
+    if progress_probe_seconds > 0:
+        time.sleep(progress_probe_seconds)
+        progress_screenshot = _capture_screenshot(
+            artifact_dir=artifact_dir,
+            ffmpeg=ffmpeg,
+            display=display,
+            name="control-07-progress-probe",
+        )
+        screenshots.append(str(progress_screenshot.resolve()))
+        progress_probe = _probe_screenshot_progress(
+            ffmpeg=ffmpeg,
+            first_screenshot=final_screenshot,
+            second_screenshot=progress_screenshot,
+            probe_seconds=progress_probe_seconds,
+        )
     census = _capture_window_census(
         artifact_dir=artifact_dir,
         display=display,
@@ -797,16 +889,17 @@ def _drive_practice_stage(
         xprop=xprop,
         xwininfo=xwininfo,
     )
-    oracle = _classify_window_census(census)
-    screenshots.append(str(final_screenshot.resolve()))
+    oracle = _classify_control_observation(census, progress_probe=progress_probe)
     return {
         "mode": "practice-stage",
         "practice_stage": stage,
         "difficulty": difficulty,
         "window_id": window_id,
         "stage_entry_wait_seconds": stage_entry_wait_seconds,
+        "progress_probe_seconds": progress_probe_seconds,
         "entered_stage_screenshot": str(final_screenshot.resolve()),
         "window_census": census,
+        "progress_probe": progress_probe,
         "oracle": oracle,
         "steps": steps,
         "screenshots": screenshots,
@@ -832,6 +925,7 @@ def _run_retail_with_practice_control(
     difficulty: int,
     startup_seconds: float,
     stage_entry_wait_seconds: float,
+    progress_probe_seconds: float,
     dry_run: bool,
 ) -> dict[str, object]:
     executable = _retail_executable(game_dir)
@@ -855,6 +949,7 @@ def _run_retail_with_practice_control(
                 "difficulty": difficulty,
                 "startup_seconds": startup_seconds,
                 "stage_entry_wait_seconds": stage_entry_wait_seconds,
+                "progress_probe_seconds": progress_probe_seconds,
             },
         }
 
@@ -913,6 +1008,7 @@ def _run_retail_with_practice_control(
                 stage=practice_stage,
                 difficulty=difficulty,
                 stage_entry_wait_seconds=stage_entry_wait_seconds,
+                progress_probe_seconds=progress_probe_seconds,
             )
             oracle = control_report.get("oracle") if isinstance(control_report, dict) else None
             classification = oracle.get("classification") if isinstance(oracle, dict) else None
@@ -1072,6 +1168,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=DEFAULT_STAGE_ENTRY_WAIT_SECONDS,
     )
+    parser.add_argument(
+        "--progress-probe-seconds",
+        type=float,
+        default=DEFAULT_PROGRESS_PROBE_SECONDS,
+    )
     return parser.parse_args()
 
 
@@ -1085,8 +1186,12 @@ def main() -> int:
         raise FileNotFoundError(f"missing source game directory: {source_game_dir}")
     if args.timeout_seconds <= 0:
         raise ValueError("--timeout-seconds must be positive")
-    if args.startup_seconds <= 0 or args.stage_entry_wait_seconds <= 0:
-        raise ValueError("startup/stage-entry waits must be positive")
+    if (
+        args.startup_seconds <= 0
+        or args.stage_entry_wait_seconds <= 0
+        or args.progress_probe_seconds < 0
+    ):
+        raise ValueError("startup/stage-entry waits must be positive and progress-probe must be non-negative")
     if args.practice_stage is not None and (args.character != 0 or args.shot_type != 0):
         raise ValueError("retail practice automation currently supports Reimu A only")
 
@@ -1140,6 +1245,7 @@ def main() -> int:
                 difficulty=args.difficulty,
                 startup_seconds=args.startup_seconds,
                 stage_entry_wait_seconds=args.stage_entry_wait_seconds,
+                progress_probe_seconds=args.progress_probe_seconds,
                 dry_run=args.dry_run,
             )
         else:

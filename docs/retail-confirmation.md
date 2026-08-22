@@ -147,6 +147,8 @@ It also has a first-pass retail oracle:
 
 - `game-window-live` when the main TH06 window remains live after the Practice
   start sequence and observation delay;
+- `game-window-static` when the TH06 window stays live but two post-entry
+  screenshots decode to identical pixels across the probe window;
 - `crash-dialog` when Wine exposes `プログラム エラー` or `Wine Debugger`
   windows after stage start.
 
@@ -154,6 +156,9 @@ It now carries extra evidence on top of that window layer:
 
 - `wine-crash-log` when `wine.log` shows an unhandled page fault / debugger
   signature even if the window census alone would be weak;
+- `control.progress_probe` in `report.json` with the probe delay, screenshot
+  paths, decoded-pixel hashes, pixel-change ratio, and the
+  `identical_pixels` verdict;
 - `abnormal-exit` when the retail process exits with a non-zero observed code
   without a stronger crash-dialog/log signature;
 - `wine_log.primary_signature` plus `wine_log.normalized_primary_signature` in

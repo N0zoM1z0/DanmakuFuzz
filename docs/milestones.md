@@ -45,4 +45,6 @@ now also normalizes thread/address jitter in Wine crash lines before grouping.
 The replay queue can additionally skip only when prior retail history implies a
 single stable normalized signature for a source/finding cluster.
 Milestone 7 remains open until the retail
-oracle grows beyond the current window/dialog layer.
+oracle grows beyond the current window/dialog layer; it now also has a
+screenshot-based `game-window-static` signal, but still lacks stronger
+state-aware confirmation.
