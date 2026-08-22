@@ -15,6 +15,9 @@ Current first-pass parser-lane entrypoints:
 
 - `danmakufuzz.parser.pbg3_archive` validates archive structure and optional
   decompression;
+- `danmakufuzz.parser.pbg3_campaign` mutates one retail PBG3 archive seed and
+  classifies each malformed case as `parse-error`, `extract-error`, or
+  `accepted`;
 - `danmakufuzz.parser.replay` validates replay magic, deobfuscation, checksum,
   version, and stage offsets;
 - `danmakufuzz.parser.stage_std` walks the stage header, object table, quad

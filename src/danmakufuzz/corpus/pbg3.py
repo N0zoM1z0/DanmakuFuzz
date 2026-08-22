@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+from collections.abc import Sequence
 from typing import Mapping
 
 
@@ -101,7 +102,7 @@ class _BitWriter:
         return bytes(self._output)
 
 
-def _compress_literal_only(payload: bytes) -> tuple[bytes, int]:
+def compress_literal_payload(payload: bytes) -> tuple[bytes, int]:
     writer = _BitWriter()
     for byte in payload:
         writer.write_bits(1, 1)
@@ -110,6 +111,10 @@ def _compress_literal_only(payload: bytes) -> tuple[bytes, int]:
     writer.write_bits(0, 13)
     compressed = writer.finish()
     return compressed, sum(compressed) & 0xFFFFFFFF
+
+
+def _compress_literal_only(payload: bytes) -> tuple[bytes, int]:
+    return compress_literal_payload(payload)
 
 
 @dataclass(frozen=True)
@@ -165,6 +170,13 @@ class Pbg3Archive:
         index = self.entries.index(entry)
         end = self.entries[index + 1].data_offset if index + 1 < len(self.entries) else self.table_offset
         return entry.data_offset, end
+
+    def compressed_entries(self) -> tuple[tuple[Pbg3Entry, bytes], ...]:
+        return tuple(
+            (entry, self.data[start:end])
+            for entry in self.entries
+            for start, end in (self._entry_bounds(entry),)
+        )
 
     def extract(self, filename: str) -> bytes:
         return self.extract_entry(self.entry_by_name(filename))
@@ -223,7 +235,7 @@ class Pbg3Archive:
             payload = replacements.get(entry.filename)
             if payload is None:
                 payload = self.extract_entry(entry)
-            compressed, checksum = _compress_literal_only(payload)
+            compressed, checksum = compress_literal_payload(payload)
             compressed_entries.append((
                 Pbg3Entry(
                     filename=entry.filename,
@@ -235,43 +247,63 @@ class Pbg3Archive:
                 ),
                 compressed,
             ))
+        return build_pbg3(compressed_entries)
 
-        header_probe = _BitWriter()
-        header_probe.write_varint(len(compressed_entries), width=32)
-        header_probe.write_varint(0, width=32)
-        header_size = 4 + len(header_probe.finish())
-        data_offset = header_size
-        finalized_entries: list[Pbg3Entry] = []
-        data_blob = bytearray()
-        for entry, compressed in compressed_entries:
-            finalized_entries.append(Pbg3Entry(
+def build_pbg3(
+    entries_with_compressed: Sequence[tuple[Pbg3Entry, bytes]],
+    *,
+    magic: bytes = b"PBG3",
+    count_override: int | None = None,
+    table_offset_override: int | None = None,
+    normalize_offsets: bool = True,
+) -> bytes:
+    if len(magic) != 4:
+        raise ValueError("PBG3 magic must be 4 bytes")
+
+    declared_count = len(entries_with_compressed) if count_override is None else int(count_override)
+    header_probe = _BitWriter()
+    header_probe.write_varint(declared_count, width=32)
+    header_probe.write_varint(0, width=32)
+    header_size = 4 + len(header_probe.finish())
+
+    data_blob = bytearray()
+    finalized_entries: list[Pbg3Entry] = []
+    data_offset = header_size
+    for entry, compressed in entries_with_compressed:
+        finalized_entries.append(
+            Pbg3Entry(
                 filename=entry.filename,
                 checksum=entry.checksum,
-                data_offset=data_offset,
+                data_offset=(data_offset if normalize_offsets else entry.data_offset),
                 uncompressed_size=entry.uncompressed_size,
                 unk1=entry.unk1,
                 unk2=entry.unk2,
-            ))
-            data_blob += compressed
-            data_offset += len(compressed)
+            )
+        )
+        data_blob += compressed
+        data_offset += len(compressed)
 
-        table_offset = header_size + len(data_blob)
-        writer = _BitWriter()
-        for entry in finalized_entries:
-            writer.write_varint(entry.unk2, width=32)
-            writer.write_varint(entry.unk1, width=32)
-            writer.write_varint(entry.checksum, width=32)
-            writer.write_varint(entry.data_offset, width=32)
-            writer.write_varint(entry.uncompressed_size, width=32)
-            writer.write_string(entry.filename)
-        table_blob = writer.finish()
+    table_offset = (
+        header_size + len(data_blob)
+        if table_offset_override is None
+        else int(table_offset_override)
+    )
+    writer = _BitWriter()
+    for entry in finalized_entries:
+        writer.write_varint(entry.unk2, width=32)
+        writer.write_varint(entry.unk1, width=32)
+        writer.write_varint(entry.checksum, width=32)
+        writer.write_varint(entry.data_offset, width=32)
+        writer.write_varint(entry.uncompressed_size, width=32)
+        writer.write_string(entry.filename)
+    table_blob = writer.finish()
 
-        header = bytearray(b"PBG3")
-        header_writer = _BitWriter()
-        header_writer.write_varint(len(finalized_entries), width=32)
-        header_writer.write_varint(table_offset, width=32)
-        header += header_writer.finish()
-        return bytes(header + data_blob + table_blob)
+    header = bytearray(magic)
+    header_writer = _BitWriter()
+    header_writer.write_varint(declared_count, width=32)
+    header_writer.write_varint(table_offset, width=32)
+    header += header_writer.finish()
+    return bytes(header + data_blob + table_blob)
 
 
 def sha256_bytes(data: bytes) -> str:
