@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..ecl_ir.mutators import generate_targeted_mutants
+from ..ecl_ir.mutators import generate_exploration_mutants, generate_targeted_mutants
 from ..ecl_ir.parser import parse_ecl
 from ..ecl_ir.serializer import serialize_ecl
 
@@ -13,6 +13,7 @@ class PayloadMutant:
     payload: bytes
     source: str
     path: tuple[int, int] | None = None
+    metadata: dict[str, int | str] | None = None
 
 
 def _replace_i16(buffer: bytes, offset: int, value: int) -> bytes:
@@ -52,19 +53,37 @@ def generate_structural_mutants(seed_payload: bytes) -> list[PayloadMutant]:
     return mutants
 
 
-def generate_payload_mutants(seed_payload: bytes, *, include_structural: bool = True) -> list[PayloadMutant]:
+def generate_payload_mutants(
+    seed_payload: bytes,
+    *,
+    include_structural: bool = True,
+    mutation_mode: str = "deterministic",
+    random_seed: int = 0,
+    samples_per_site: int = 4,
+) -> list[PayloadMutant]:
     mutants: list[PayloadMutant] = []
     if include_structural:
         mutants.extend(generate_structural_mutants(seed_payload))
 
     ecl = parse_ecl(seed_payload)
-    for mutant in generate_targeted_mutants(ecl):
+    if mutation_mode == "deterministic":
+        ir_mutants = generate_targeted_mutants(ecl)
+    elif mutation_mode == "exploration":
+        ir_mutants = generate_exploration_mutants(
+            ecl,
+            random_seed=random_seed,
+            samples_per_site=samples_per_site,
+        )
+    else:
+        raise ValueError(f"unsupported mutation_mode: {mutation_mode}")
+    for mutant in ir_mutants:
         mutants.append(
             PayloadMutant(
                 name=mutant.name,
                 payload=serialize_ecl(mutant.ecl),
                 source="ir",
                 path=mutant.path,
+                metadata=mutant.metadata,
             )
         )
     return mutants

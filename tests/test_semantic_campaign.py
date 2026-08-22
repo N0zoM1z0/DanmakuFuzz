@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from danmakufuzz.ecl_ir.model import EclFile, EclSubroutine, RawInstruction
-from danmakufuzz.ecl_ir.mutators import generate_targeted_mutants
+from danmakufuzz.ecl_ir.mutators import generate_exploration_mutants, generate_targeted_mutants
 from danmakufuzz.interestingness.rules import Finding
 from danmakufuzz.semantic.ecl_campaign import (
     DEFAULT_CORE_NAME_FILTERS,
@@ -218,3 +218,41 @@ def test_generate_targeted_mutants_includes_drop_item_mutants() -> None:
     )
     names = {mutant.name for mutant in generate_targeted_mutants(ecl)}
     assert {"drop-items-32", "drop-item-id-life", "exinscall-17"} <= names
+
+
+def test_generate_exploration_mutants_is_seeded_for_time_set() -> None:
+    ecl = EclFile(
+        sub_count=1,
+        main_count=0,
+        timeline_offsets=(0, 0, 0),
+        timeline=[],
+        subs=[
+            EclSubroutine(
+                file_offset=0,
+                instructions=[
+                    RawInstruction(
+                        time=0,
+                        opcode=123,
+                        offset_to_next=16,
+                        unk8=0,
+                        skip_for_difficulty=0,
+                        unk_a=0,
+                        unk_b=0,
+                        args=(120).to_bytes(4, "little", signed=True),
+                    ),
+                ],
+            )
+        ],
+    )
+    first = generate_exploration_mutants(ecl, random_seed=17, samples_per_site=4)
+    second = generate_exploration_mutants(ecl, random_seed=17, samples_per_site=4)
+    third = generate_exploration_mutants(ecl, random_seed=18, samples_per_site=4)
+
+    first_names = [mutant.name for mutant in first]
+    second_names = [mutant.name for mutant in second]
+    third_names = [mutant.name for mutant in third]
+
+    assert first_names == second_names
+    assert first_names != third_names
+    assert all(name.startswith("time-set-sampled-") for name in first_names)
+    assert all(mutant.metadata is not None for mutant in first)

@@ -63,8 +63,17 @@ def select_mutants(
     *,
     include_structural: bool = True,
     name_filters: Sequence[str] | None = None,
+    mutation_mode: str = "deterministic",
+    random_seed: int = 0,
+    samples_per_site: int = 4,
 ) -> list[PayloadMutant]:
-    mutants = generate_payload_mutants(seed_payload, include_structural=include_structural)
+    mutants = generate_payload_mutants(
+        seed_payload,
+        include_structural=include_structural,
+        mutation_mode=mutation_mode,
+        random_seed=random_seed,
+        samples_per_site=samples_per_site,
+    )
     return filter_mutants_by_name(mutants, name_filters)
 
 
@@ -282,6 +291,7 @@ def run_case(
             if mutant.path is not None
             else None
         ),
+        "mutation_metadata": mutant.metadata,
         "command": command,
         "seed_name": seed_name,
         "stage": stage,
@@ -318,6 +328,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name-filter", action="append")
     parser.add_argument("--case-prefix", type=str, default="campaign")
     parser.add_argument("--no-structural", action="store_true")
+    parser.add_argument("--mutation-mode", choices=("deterministic", "exploration"), default="deterministic")
+    parser.add_argument("--random-seed", type=int, default=0)
+    parser.add_argument("--samples-per-site", type=int, default=4)
     parser.add_argument("--auto-shoot", dest="auto_shoot", action="store_true")
     parser.add_argument("--no-auto-shoot", dest="auto_shoot", action="store_false")
     parser.set_defaults(auto_shoot=True)
@@ -369,6 +382,9 @@ def main() -> int:
         seed_payload,
         include_structural=not args.no_structural,
         name_filters=profile["name_filters"],
+        mutation_mode=args.mutation_mode,
+        random_seed=args.random_seed,
+        samples_per_site=args.samples_per_site,
     )
     mutants = select_diverse_mutants(
         mutants,
@@ -419,6 +435,9 @@ def main() -> int:
         "stage": stage,
         "profile": profile["profile"],
         "name_filters": profile["name_filters"],
+        "mutation_mode": args.mutation_mode,
+        "random_seed": args.random_seed,
+        "samples_per_site": args.samples_per_site,
         "actions": str(profile["action_file"]),
         "max_ticks": profile["max_ticks"],
         "continue_after_hit": profile["continue_after_hit"],
