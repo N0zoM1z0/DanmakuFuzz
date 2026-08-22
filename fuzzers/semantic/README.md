@@ -40,6 +40,17 @@ also mixes context-aware, relative, scaled, bit-flip, and wide random values.
 Use `--random-seed` to roam the sampler and `--samples-per-site` to control the
 per-site fanout without changing the surrounding campaign logic.
 
+When exploration mode runs without an explicit limit, the runners now apply a
+small automatic mutant budget instead of materializing the full sampled set:
+
+- `semantic.ecl_campaign`: `128` mutants;
+- `semantic.family_sweep`: `32` mutants per seed;
+- `semantic.boss_sweep`: `32` mutants per seed;
+- `semantic.exploration_grid`: `32` mutants per task.
+
+Pass an explicit `--limit` / `--limit-per-seed` / `--limit-per-task` to choose
+another budget, or `--full-mutant-set` to force the old unbounded behavior.
+
 When the campaign uses `selection_mode=site`, the exploration lane now also
 reorders mutants inside each ECL site before limit-based selection. This avoids
 the older append-order bias where low `--limit` runs mostly exercised the first

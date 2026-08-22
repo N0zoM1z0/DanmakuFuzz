@@ -14,6 +14,7 @@ from danmakufuzz.semantic.ecl_campaign import (
     mutant_family,
     practice_stage_supported,
     resolve_campaign_profile,
+    resolve_mutant_limit,
     resolve_selection_mode,
     select_diverse_mutants,
 )
@@ -103,6 +104,51 @@ def test_select_diverse_mutants_site_mode_spreads_across_sites() -> None:
 def test_resolve_selection_mode_auto_prefers_site_for_exploration() -> None:
     assert resolve_selection_mode(mutation_mode="deterministic", selection_mode="auto") == "family"
     assert resolve_selection_mode(mutation_mode="exploration", selection_mode="auto") == "site"
+
+
+def test_resolve_mutant_limit_applies_auto_budget_for_exploration() -> None:
+    resolved = resolve_mutant_limit(
+        mutation_mode="exploration",
+        requested_limit=None,
+        full_mutant_set=False,
+        default_exploration_limit=32,
+    )
+    assert resolved == {
+        "requested_limit": None,
+        "effective_limit": 32,
+        "auto_applied": True,
+        "reason": "exploration-auto-budget",
+    }
+
+
+def test_resolve_mutant_limit_preserves_explicit_limit() -> None:
+    resolved = resolve_mutant_limit(
+        mutation_mode="exploration",
+        requested_limit=96,
+        full_mutant_set=False,
+        default_exploration_limit=32,
+    )
+    assert resolved == {
+        "requested_limit": 96,
+        "effective_limit": 96,
+        "auto_applied": False,
+        "reason": "explicit-limit",
+    }
+
+
+def test_resolve_mutant_limit_full_mutant_set_disables_auto_budget() -> None:
+    resolved = resolve_mutant_limit(
+        mutation_mode="exploration",
+        requested_limit=None,
+        full_mutant_set=True,
+        default_exploration_limit=32,
+    )
+    assert resolved == {
+        "requested_limit": None,
+        "effective_limit": None,
+        "auto_applied": False,
+        "reason": "full-mutant-set",
+    }
 
 
 def test_mutant_bucket_key_family_site_combines_dimensions() -> None:

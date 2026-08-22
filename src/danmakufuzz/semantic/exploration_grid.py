@@ -17,9 +17,11 @@ from ..headless.prepare_worker_game_dir import prepare_worker_game_dir
 from ..interestingness.rules import load_trace_records
 from ..repo import ARTIFACTS_DIR, REFERENCE_DIR, ensure_directory
 from .ecl_campaign import (
+    DEFAULT_EXPLORATION_GRID_LIMIT,
     infer_stage_from_ecl_name,
     practice_stage_supported,
     resolve_campaign_profile,
+    resolve_mutant_limit,
     resolve_selection_mode,
     run_case,
     select_mutants,
@@ -458,6 +460,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=float, default=5.0)
     parser.add_argument("--profile", choices=("default", "core", "boss"), default="core")
     parser.add_argument("--limit-per-task", type=int)
+    parser.add_argument("--full-mutant-set", action="store_true")
     parser.add_argument("--name-filter", action="append")
     parser.add_argument("--include-structural", action="store_true")
     parser.add_argument("--mutation-mode", choices=("deterministic", "exploration"), default="exploration")
@@ -483,6 +486,12 @@ def main() -> int:
     resolved_selection_mode = resolve_selection_mode(
         mutation_mode=args.mutation_mode,
         selection_mode=args.selection_mode,
+    )
+    limit_policy = resolve_mutant_limit(
+        mutation_mode=args.mutation_mode,
+        requested_limit=args.limit_per_task,
+        full_mutant_set=args.full_mutant_set,
+        default_exploration_limit=DEFAULT_EXPLORATION_GRID_LIMIT,
     )
     profile = resolve_campaign_profile(
         profile=args.profile,
@@ -546,7 +555,7 @@ def main() -> int:
                         include_structural=args.include_structural,
                         mutation_mode=args.mutation_mode,
                         samples_per_site=args.samples_per_site,
-                        limit_per_task=args.limit_per_task,
+                        limit_per_task=limit_policy["effective_limit"],
                         auto_shoot=args.auto_shoot,
                         print_lock=print_lock,
                     )
@@ -560,7 +569,7 @@ def main() -> int:
                         include_structural=args.include_structural,
                         mutation_mode=args.mutation_mode,
                         samples_per_site=args.samples_per_site,
-                        limit_per_task=args.limit_per_task,
+                        limit_per_task=limit_policy["effective_limit"],
                         timeout_seconds=float(profile["timeout_seconds"]),
                         error=error,
                     )
@@ -625,6 +634,10 @@ def main() -> int:
         "name_filters": list(profile["name_filters"]),
         "include_structural": args.include_structural,
         "mutation_mode": args.mutation_mode,
+        "requested_limit_per_task": limit_policy["requested_limit"],
+        "effective_limit_per_task": limit_policy["effective_limit"],
+        "limit_auto_applied": limit_policy["auto_applied"],
+        "limit_reason": limit_policy["reason"],
         "random_seeds": random_seeds,
         "samples_per_site": args.samples_per_site,
         "selection_mode": resolved_selection_mode,

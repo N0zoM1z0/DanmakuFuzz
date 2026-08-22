@@ -9,10 +9,12 @@ from ..headless.baseline import DEFAULT_GAME_DIR, default_headless_binary, run_b
 from ..interestingness.rules import load_trace_records
 from ..repo import ARTIFACTS_DIR, REFERENCE_DIR, ensure_directory
 from .ecl_campaign import (
+    DEFAULT_EXPLORATION_SWEEP_LIMIT,
     DEFAULT_BOSS_NAME_FILTERS,
     LONG_ACTION_FILE,
     infer_stage_from_ecl_name,
     practice_stage_supported,
+    resolve_mutant_limit,
     resolve_selection_mode,
     run_case,
     select_mutants,
@@ -64,6 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-ticks", type=int, default=1800)
     parser.add_argument("--timeout-seconds", type=float, default=15.0)
     parser.add_argument("--limit-per-seed", type=int)
+    parser.add_argument("--full-mutant-set", action="store_true")
     parser.add_argument("--name-filter", action="append")
     parser.add_argument("--mutation-mode", choices=("deterministic", "exploration"), default="deterministic")
     parser.add_argument("--random-seed", type=int, default=0)
@@ -85,6 +88,12 @@ def main() -> int:
     resolved_selection_mode = resolve_selection_mode(
         mutation_mode=args.mutation_mode,
         selection_mode=args.selection_mode,
+    )
+    limit_policy = resolve_mutant_limit(
+        mutation_mode=args.mutation_mode,
+        requested_limit=args.limit_per_seed,
+        full_mutant_set=args.full_mutant_set,
+        default_exploration_limit=DEFAULT_EXPLORATION_SWEEP_LIMIT,
     )
 
     totals = {"seeds_considered": 0, "seeds_run": 0, "cases_run": 0, "interesting_cases": 0}
@@ -139,7 +148,7 @@ def main() -> int:
             mutation_mode=args.mutation_mode,
             random_seed=args.random_seed,
             samples_per_site=args.samples_per_site,
-            limit=args.limit_per_seed,
+            limit=limit_policy["effective_limit"],
             family_filters=name_filters,
             selection_mode=resolved_selection_mode,
         )
@@ -190,6 +199,10 @@ def main() -> int:
             "stage": stage,
             "name_filters": list(name_filters),
             "mutation_mode": args.mutation_mode,
+            "requested_limit_per_seed": limit_policy["requested_limit"],
+            "effective_limit_per_seed": limit_policy["effective_limit"],
+            "limit_auto_applied": limit_policy["auto_applied"],
+            "limit_reason": limit_policy["reason"],
             "random_seed": args.random_seed,
             "samples_per_site": args.samples_per_site,
             "selection_mode": resolved_selection_mode,
@@ -210,6 +223,10 @@ def main() -> int:
         "artifact_dir": str(artifact_dir),
         "name_filters": list(name_filters),
         "mutation_mode": args.mutation_mode,
+        "requested_limit_per_seed": limit_policy["requested_limit"],
+        "effective_limit_per_seed": limit_policy["effective_limit"],
+        "limit_auto_applied": limit_policy["auto_applied"],
+        "limit_reason": limit_policy["reason"],
         "random_seed": args.random_seed,
         "samples_per_site": args.samples_per_site,
         "selection_mode": resolved_selection_mode,

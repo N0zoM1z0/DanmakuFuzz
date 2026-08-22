@@ -32,6 +32,9 @@ from .payload_mutants import (
 
 ECLDATA_RE = re.compile(r"ecldata(?P<stage>\d+)\.ecl$")
 LONG_ACTION_FILE = CONFIG_DIR / "headless_baseline_actions_1800.txt"
+DEFAULT_EXPLORATION_CAMPAIGN_LIMIT = 128
+DEFAULT_EXPLORATION_SWEEP_LIMIT = 32
+DEFAULT_EXPLORATION_GRID_LIMIT = 32
 DEFAULT_CORE_NAME_FILTERS = (
     "jump-offset-",
     "call-sub-",
@@ -148,6 +151,42 @@ def resolve_selection_mode(*, mutation_mode: str, selection_mode: str) -> str:
     if selection_mode not in {"family", "site", "family-site"}:
         raise ValueError(f"unsupported selection_mode: {selection_mode}")
     return selection_mode
+
+
+def resolve_mutant_limit(
+    *,
+    mutation_mode: str,
+    requested_limit: int | None,
+    full_mutant_set: bool,
+    default_exploration_limit: int,
+) -> dict[str, object]:
+    if requested_limit is not None:
+        return {
+            "requested_limit": requested_limit,
+            "effective_limit": requested_limit,
+            "auto_applied": False,
+            "reason": "explicit-limit",
+        }
+    if full_mutant_set:
+        return {
+            "requested_limit": None,
+            "effective_limit": None,
+            "auto_applied": False,
+            "reason": "full-mutant-set",
+        }
+    if mutation_mode == "exploration":
+        return {
+            "requested_limit": None,
+            "effective_limit": default_exploration_limit,
+            "auto_applied": True,
+            "reason": "exploration-auto-budget",
+        }
+    return {
+        "requested_limit": None,
+        "effective_limit": None,
+        "auto_applied": False,
+        "reason": "unbounded-default",
+    }
 
 
 def mutant_bucket_key(
@@ -431,6 +470,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=float, default=5.0)
     parser.add_argument("--profile", choices=("default", "core", "boss"), default="default")
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--full-mutant-set", action="store_true")
     parser.add_argument("--name-filter", action="append")
     parser.add_argument("--case-prefix", type=str, default="campaign")
     parser.add_argument("--no-structural", action="store_true")
@@ -454,6 +494,12 @@ def main() -> int:
     resolved_selection_mode = resolve_selection_mode(
         mutation_mode=args.mutation_mode,
         selection_mode=args.selection_mode,
+    )
+    limit_policy = resolve_mutant_limit(
+        mutation_mode=args.mutation_mode,
+        requested_limit=args.limit,
+        full_mutant_set=args.full_mutant_set,
+        default_exploration_limit=DEFAULT_EXPLORATION_CAMPAIGN_LIMIT,
     )
     profile = resolve_campaign_profile(
         profile=args.profile,
@@ -501,7 +547,7 @@ def main() -> int:
         mutation_mode=args.mutation_mode,
         random_seed=args.random_seed,
         samples_per_site=args.samples_per_site,
-        limit=args.limit,
+        limit=limit_policy["effective_limit"],
         family_filters=profile["name_filters"],
         selection_mode=resolved_selection_mode,
     )
@@ -551,6 +597,10 @@ def main() -> int:
         "profile": profile["profile"],
         "name_filters": profile["name_filters"],
         "mutation_mode": args.mutation_mode,
+        "requested_limit": limit_policy["requested_limit"],
+        "effective_limit": limit_policy["effective_limit"],
+        "limit_auto_applied": limit_policy["auto_applied"],
+        "limit_reason": limit_policy["reason"],
         "random_seed": args.random_seed,
         "samples_per_site": args.samples_per_site,
         "selection_mode": resolved_selection_mode,
