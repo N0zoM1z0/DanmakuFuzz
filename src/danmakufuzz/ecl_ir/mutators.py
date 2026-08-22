@@ -608,6 +608,56 @@ def _random_signed_bits(rng: random.Random, bit_width: int) -> int:
     return -value if rng.getrandbits(1) else value
 
 
+def _sample_u8(
+    *,
+    current: int,
+    budget: int,
+    rng: random.Random,
+    family: str,
+) -> list[int]:
+    base = {
+        "bitmask": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            7,
+            8,
+            15,
+            16,
+            31,
+            32,
+            63,
+            64,
+            127,
+            128,
+            255,
+        ],
+    }[family]
+    relative_values = _relative_values(current, (-64, -32, -16, -8, -4, -2, -1, 1, 2, 4, 8, 16, 32, 64))
+    bitflip_values = _bitflip_values(current, bits=(0, 1, 2, 3, 4, 5, 6, 7))
+    random_local_values = [
+        current + rng.randint(-span, span)
+        for span in (3, 7, 15, 31, 63, 127)
+    ]
+    random_values = [rng.randint(0, 255) for _ in range(max(8, budget * 4))]
+    return _sample_value_groups(
+        [
+            list(base),
+            relative_values,
+            bitflip_values,
+            random_local_values,
+            random_values,
+        ],
+        current=current,
+        minimum=0,
+        maximum=255,
+        budget=budget,
+        rng=rng,
+    )
+
+
 def _sample_signed_i32(
     *,
     current: int,
@@ -746,6 +796,42 @@ def _sample_signed_i32(
             128,
             255,
         ],
+        "generic": [
+            -0x8000,
+            -4096,
+            -2048,
+            -1024,
+            -512,
+            -256,
+            -128,
+            -64,
+            -32,
+            -16,
+            -8,
+            -4,
+            -2,
+            -1,
+            0,
+            1,
+            2,
+            4,
+            8,
+            16,
+            32,
+            64,
+            127,
+            128,
+            255,
+            256,
+            511,
+            512,
+            1024,
+            2048,
+            4096,
+            0x7FFF,
+            0x10000,
+            0x7FFFFFFF,
+        ],
     }[family]
     anchor_values = list(base)
     if context_limit is not None:
@@ -833,6 +919,35 @@ def _sample_signed_i16(
             255,
             511,
             1023,
+        ],
+        "generic": [
+            -0x4000,
+            -2048,
+            -1024,
+            -512,
+            -256,
+            -128,
+            -64,
+            -32,
+            -16,
+            -8,
+            -4,
+            -2,
+            -1,
+            0,
+            1,
+            2,
+            4,
+            8,
+            16,
+            32,
+            64,
+            127,
+            128,
+            255,
+            511,
+            1023,
+            0x7FFF,
         ],
     }[family]
     relative_values = _relative_values(current, (-256, -128, -64, -16, -4, -1, 1, 4, 16, 64, 128, 256))
@@ -996,6 +1111,7 @@ def _sample_site_mutants(
         arg_offset: int,
         field: str,
         context_limit: int | None = None,
+        metadata_family: str | None = None,
     ) -> None:
         current = _read_i32(instruction.args, arg_offset)
         rng = _site_rng(
@@ -1024,7 +1140,7 @@ def _sample_site_mutants(
                     ),
                     metadata={
                         "strategy": "sampled-i32",
-                        "family": family,
+                        "family": metadata_family or family,
                         "field": field,
                         "arg_offset": arg_offset,
                         "value": value,
@@ -1038,6 +1154,7 @@ def _sample_site_mutants(
         *,
         arg_offset: int,
         field: str,
+        metadata_family: str | None = None,
     ) -> None:
         current = _read_i16(instruction.args, arg_offset)
         rng = _site_rng(
@@ -1065,9 +1182,91 @@ def _sample_site_mutants(
                     ),
                     metadata={
                         "strategy": "sampled-i16",
-                        "family": family,
+                        "family": metadata_family or family,
                         "field": field,
                         "arg_offset": arg_offset,
+                        "value": value,
+                        "random_seed": random_seed,
+                    },
+                )
+            )
+
+    def append_instruction_i32_samples(
+        family: str,
+        *,
+        field_name: str,
+        field: str,
+    ) -> None:
+        current = int(getattr(instruction, field_name))
+        rng = _site_rng(
+            random_seed,
+            opcode=instruction.opcode,
+            sub_index=sub_index,
+            instruction_index=instruction_index,
+            family=family,
+        )
+        for value in _sample_signed_i32(
+            current=current,
+            budget=samples_per_site,
+            rng=rng,
+            family=field,
+        ):
+            mutants.append(
+                Mutant(
+                    f"{family}-sampled-{_value_slug(value)}",
+                    key,
+                    _clone_with_mutated_instruction(
+                        ecl,
+                        sub_index,
+                        instruction_index,
+                        RawInstruction(**{**instruction.__dict__, field_name: value}),
+                    ),
+                    metadata={
+                        "strategy": "sampled-instruction-i32",
+                        "family": family,
+                        "field_name": field_name,
+                        "field": field,
+                        "value": value,
+                        "random_seed": random_seed,
+                    },
+                )
+            )
+
+    def append_instruction_u8_samples(
+        family: str,
+        *,
+        field_name: str,
+        field: str,
+    ) -> None:
+        current = int(getattr(instruction, field_name)) & 0xFF
+        rng = _site_rng(
+            random_seed,
+            opcode=instruction.opcode,
+            sub_index=sub_index,
+            instruction_index=instruction_index,
+            family=family,
+        )
+        for value in _sample_u8(
+            current=current,
+            budget=samples_per_site,
+            rng=rng,
+            family=field,
+        ):
+            mutants.append(
+                Mutant(
+                    f"{family}-sampled-{_value_slug(value)}",
+                    key,
+                    _clone_with_mutated_instruction(
+                        ecl,
+                        sub_index,
+                        instruction_index,
+                        RawInstruction(**{**instruction.__dict__, field_name: value}),
+                    ),
+                    metadata={
+                        "strategy": "sampled-instruction-u8",
+                        "family": family,
+                        "field_name": field_name,
+                        "field": field,
                         "value": value,
                         "random_seed": random_seed,
                     },
@@ -1124,6 +1323,24 @@ def _sample_site_mutants(
                     },
                 )
             )
+
+    note_family("instruction-time")
+    if _family_requested("instruction-time", family_filters):
+        append_instruction_i32_samples("instruction-time", field_name="time", field="time")
+    note_family("difficulty-mask")
+    if _family_requested("difficulty-mask", family_filters):
+        append_instruction_u8_samples("difficulty-mask", field_name="skip_for_difficulty", field="bitmask")
+    if len(instruction.args) >= 4:
+        note_family("generic-arg32")
+        if _family_requested("generic-arg32", family_filters):
+            generic_i32_slots = min(len(instruction.args) // 4, 2)
+            for slot_index in range(generic_i32_slots):
+                append_i32_samples(
+                    f"generic-arg32-o{slot_index}",
+                    arg_offset=slot_index * 4,
+                    field="generic",
+                    metadata_family="generic-arg32",
+                )
 
     sub_count = len(ecl.subs)
     if instruction.opcode in {OP_JUMP, OP_JUMPDEC} and len(instruction.args) >= 8:
