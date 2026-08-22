@@ -40,6 +40,8 @@ DEFAULT_STARTUP_SECONDS = 5.0
 DEFAULT_STAGE_ENTRY_WAIT_SECONDS = 3.0
 DEFAULT_PROGRESS_PROBE_SECONDS = 2.0
 DEFAULT_SCREEN_SIZE = "1024x768x24"
+BASELINE_EQUIVALENCE_RATIO = 0.001
+BASELINE_VISUAL_DRIFT_RATIO = 0.05
 WINE_CRASH_LOG_TOKENS = (
     "unhandled page fault",
     "unhandled exception",
@@ -483,6 +485,35 @@ def _probe_screenshot_progress(
     }
 
 
+def _compare_screenshots(
+    *,
+    ffmpeg: Path,
+    baseline_screenshot: Path,
+    mutant_screenshot: Path,
+) -> dict[str, object]:
+    baseline_rgb24 = _decode_rgb24(ffmpeg, baseline_screenshot)
+    mutant_rgb24 = _decode_rgb24(ffmpeg, mutant_screenshot)
+    if len(baseline_rgb24) != len(mutant_rgb24):
+        raise ValueError("baseline and mutant screenshots decoded to different sizes")
+    baseline_sha256 = hashlib.sha256(baseline_rgb24).hexdigest()
+    mutant_sha256 = hashlib.sha256(mutant_rgb24).hexdigest()
+    total_pixels = len(baseline_rgb24) // 3
+    changed_pixels = sum(
+        baseline_rgb24[index:index + 3] != mutant_rgb24[index:index + 3]
+        for index in range(0, len(baseline_rgb24), 3)
+    )
+    return {
+        "baseline_screenshot": str(baseline_screenshot.resolve()),
+        "mutant_screenshot": str(mutant_screenshot.resolve()),
+        "baseline_pixel_sha256": baseline_sha256,
+        "mutant_pixel_sha256": mutant_sha256,
+        "total_pixels": total_pixels,
+        "changed_pixels": changed_pixels,
+        "pixel_change_ratio": (changed_pixels / total_pixels) if total_pixels else 0.0,
+        "identical_pixels": baseline_sha256 == mutant_sha256,
+    }
+
+
 def _capture_window_census(
     *,
     artifact_dir: Path,
@@ -716,6 +747,183 @@ def _classify_retail_outcome(
         "wine_log_normalized_primary_signature": wine_log.get("normalized_primary_signature"),
         "observed_returncode": observed_returncode,
         "timed_out": timed_out,
+    }
+
+
+def _control_oracle_classification(run_report: dict[str, object] | None) -> str | None:
+    if not isinstance(run_report, dict):
+        return None
+    control = run_report.get("control")
+    if not isinstance(control, dict):
+        return None
+    oracle = control.get("oracle")
+    if not isinstance(oracle, dict):
+        return None
+    value = oracle.get("classification")
+    return value if isinstance(value, str) else None
+
+
+def _control_entered_stage_screenshot(run_report: dict[str, object] | None) -> Path | None:
+    if not isinstance(run_report, dict):
+        return None
+    control = run_report.get("control")
+    if not isinstance(control, dict):
+        return None
+    value = control.get("entered_stage_screenshot")
+    if not isinstance(value, str):
+        return None
+    path = Path(value)
+    return path if path.is_file() else None
+
+
+def _control_progress_probe_screenshot(run_report: dict[str, object] | None) -> Path | None:
+    if not isinstance(run_report, dict):
+        return None
+    control = run_report.get("control")
+    if not isinstance(control, dict):
+        return None
+    progress_probe = control.get("progress_probe")
+    if not isinstance(progress_probe, dict):
+        return None
+    value = progress_probe.get("second_screenshot")
+    if not isinstance(value, str):
+        return None
+    path = Path(value)
+    return path if path.is_file() else None
+
+
+def _compare_against_clean_baseline(
+    *,
+    ffmpeg: Path,
+    baseline_report: dict[str, object],
+    mutant_report: dict[str, object],
+) -> dict[str, object]:
+    baseline_run = baseline_report.get("run")
+    mutant_run = mutant_report.get("run")
+    baseline_termination = (
+        baseline_run.get("termination_reason")
+        if isinstance(baseline_run, dict) and isinstance(baseline_run.get("termination_reason"), str)
+        else None
+    )
+    mutant_termination = (
+        mutant_run.get("termination_reason")
+        if isinstance(mutant_run, dict) and isinstance(mutant_run.get("termination_reason"), str)
+        else None
+    )
+    baseline_control = _control_oracle_classification(baseline_run if isinstance(baseline_run, dict) else None)
+    mutant_control = _control_oracle_classification(mutant_run if isinstance(mutant_run, dict) else None)
+
+    comparisons: dict[str, dict[str, object]] = {}
+    baseline_entered = _control_entered_stage_screenshot(
+        baseline_run if isinstance(baseline_run, dict) else None
+    )
+    mutant_entered = _control_entered_stage_screenshot(
+        mutant_run if isinstance(mutant_run, dict) else None
+    )
+    if baseline_entered is not None and mutant_entered is not None:
+        comparisons["entered_stage"] = _compare_screenshots(
+            ffmpeg=ffmpeg,
+            baseline_screenshot=baseline_entered,
+            mutant_screenshot=mutant_entered,
+        )
+    baseline_progress = _control_progress_probe_screenshot(
+        baseline_run if isinstance(baseline_run, dict) else None
+    )
+    mutant_progress = _control_progress_probe_screenshot(
+        mutant_run if isinstance(mutant_run, dict) else None
+    )
+    if baseline_progress is not None and mutant_progress is not None:
+        comparisons["progress_probe"] = _compare_screenshots(
+            ffmpeg=ffmpeg,
+            baseline_screenshot=baseline_progress,
+            mutant_screenshot=mutant_progress,
+        )
+
+    ratios = [
+        comparison.get("pixel_change_ratio")
+        for comparison in comparisons.values()
+        if isinstance(comparison.get("pixel_change_ratio"), (int, float))
+    ]
+    max_ratio = max(ratios) if ratios else None
+
+    if baseline_termination != mutant_termination or baseline_control != mutant_control:
+        classification = "baseline-oracle-drift"
+        interesting = True
+    elif not comparisons:
+        classification = "baseline-unavailable"
+        interesting = False
+    elif all(bool(comparison.get("identical_pixels")) for comparison in comparisons.values()):
+        classification = "baseline-equivalent"
+        interesting = False
+    elif max_ratio is not None and max_ratio >= BASELINE_VISUAL_DRIFT_RATIO:
+        classification = "baseline-visual-drift"
+        interesting = False
+    elif max_ratio is not None and max_ratio <= BASELINE_EQUIVALENCE_RATIO:
+        classification = "baseline-equivalent"
+        interesting = False
+    else:
+        classification = "baseline-minor-drift"
+        interesting = False
+
+    return {
+        "classification": classification,
+        "interesting": interesting,
+        "baseline_termination_reason": baseline_termination,
+        "mutant_termination_reason": mutant_termination,
+        "baseline_control_oracle_classification": baseline_control,
+        "mutant_control_oracle_classification": mutant_control,
+        "entered_stage_diff_ratio": (
+            comparisons.get("entered_stage", {}).get("pixel_change_ratio")
+            if isinstance(comparisons.get("entered_stage"), dict)
+            else None
+        ),
+        "progress_probe_diff_ratio": (
+            comparisons.get("progress_probe", {}).get("pixel_change_ratio")
+            if isinstance(comparisons.get("progress_probe"), dict)
+            else None
+        ),
+        "max_diff_ratio": max_ratio,
+        "thresholds": {
+            "equivalent_ratio": BASELINE_EQUIVALENCE_RATIO,
+            "visual_drift_ratio": BASELINE_VISUAL_DRIFT_RATIO,
+        },
+        "comparisons": comparisons,
+        "baseline_artifact_dir": baseline_report.get("artifact_dir"),
+    }
+
+
+def _augment_run_report_with_baseline(
+    run_report: dict[str, object] | None,
+    baseline_comparison: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if not isinstance(run_report, dict) or not isinstance(baseline_comparison, dict):
+        return run_report
+    oracle = run_report.get("oracle")
+    if not isinstance(oracle, dict):
+        return run_report
+    augmented_oracle = dict(oracle)
+    augmented_oracle["baseline_comparison"] = baseline_comparison
+    sources = augmented_oracle.get("sources")
+    if isinstance(sources, list):
+        augmented_oracle["sources"] = [*sources, "baseline-compare"]
+    classification = baseline_comparison.get("classification")
+    if not augmented_oracle.get("interesting") and classification == "baseline-oracle-drift":
+        augmented_oracle["classification"] = "retail-baseline-oracle-drift"
+        augmented_oracle["interesting"] = True
+    wine_log = run_report.get("wine_log")
+    primary_signature = (
+        wine_log.get("primary_signature")
+        if isinstance(wine_log, dict) and isinstance(wine_log.get("primary_signature"), str)
+        else None
+    )
+    return {
+        **run_report,
+        "termination_reason": augmented_oracle["classification"],
+        "retail_signature_key": retail_signature_key(
+            augmented_oracle["classification"],
+            primary_signature,
+        ),
+        "oracle": augmented_oracle,
     }
 
 
@@ -1173,7 +1381,16 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=DEFAULT_PROGRESS_PROBE_SECONDS,
     )
+    parser.add_argument(
+        "--compare-clean-baseline",
+        action="store_true",
+        help="run an unmodified retail control under the same practice setup and compare screenshots",
+    )
     return parser.parse_args()
+
+
+def _write_report(path: Path, report: dict[str, object]) -> None:
+    path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
 def main() -> int:
@@ -1194,6 +1411,11 @@ def main() -> int:
         raise ValueError("startup/stage-entry waits must be positive and progress-probe must be non-negative")
     if args.practice_stage is not None and (args.character != 0 or args.shot_type != 0):
         raise ValueError("retail practice automation currently supports Reimu A only")
+    if args.compare_clean_baseline:
+        if args.practice_stage is None:
+            raise ValueError("--compare-clean-baseline requires --practice-stage")
+        if args.prepare_only or args.dry_run:
+            raise ValueError("--compare-clean-baseline requires a live non-dry run")
 
     case_result = _load_case_result(result_path)
     seed_name, payload, payload_path, source_result = _payload_from_case_result(
@@ -1213,6 +1435,64 @@ def main() -> int:
     xwininfo = _command_path(args.xwininfo)
     ffmpeg = _command_path(args.ffmpeg)
     display = args.display or _choose_display()
+    baseline_report = None
+    baseline_comparison = None
+
+    if args.compare_clean_baseline:
+        baseline_artifact_dir = artifact_dir / "baseline"
+        ensure_directory(baseline_artifact_dir)
+        baseline_game_dir = baseline_artifact_dir / "game"
+        baseline_prefix = baseline_artifact_dir / "prefix"
+        baseline_display = _choose_display()
+        if not baseline_game_dir.exists():
+            _copy_game_tree(source_game_dir, baseline_game_dir)
+        baseline_config_report = _configure_game_directory(baseline_game_dir)
+        baseline_unlock_score_report = _restore_full_unlock_score(baseline_game_dir)
+        baseline_run_report = _run_retail_with_practice_control(
+            game_dir=baseline_game_dir,
+            prefix=baseline_prefix,
+            artifact_dir=baseline_artifact_dir,
+            wine=wine,
+            wineboot=wineboot,
+            wineserver=wineserver,
+            xvfb=xvfb,
+            xdotool=xdotool,
+            xprop=xprop,
+            xwininfo=xwininfo,
+            ffmpeg=ffmpeg,
+            display=baseline_display,
+            timeout_seconds=args.timeout_seconds,
+            practice_stage=args.practice_stage,
+            difficulty=args.difficulty,
+            startup_seconds=args.startup_seconds,
+            stage_entry_wait_seconds=args.stage_entry_wait_seconds,
+            progress_probe_seconds=args.progress_probe_seconds,
+            dry_run=False,
+        )
+        baseline_report = {
+            "source_result": str(result_path),
+            "semantic_source_result": str(source_result) if source_result is not None else None,
+            "source_game_dir": str(source_game_dir),
+            "artifact_dir": str(baseline_artifact_dir),
+            "game_dir": str(baseline_game_dir),
+            "wine_prefix": str(baseline_prefix),
+            "display": baseline_display,
+            "seed_name": seed_name,
+            "payload_path": None,
+            "payload_size": None,
+            "payload_sha256": None,
+            "config": baseline_config_report,
+            "unlock_score": baseline_unlock_score_report,
+            "patched_archives": [],
+            "wineboot": None,
+            "run": baseline_run_report,
+            "limitations": [
+                "This is a clean retail control run under the same practice automation and timing.",
+                "Practice automation currently covers only Reimu A via X11 keyboard injection.",
+                "Route play, dialogue skipping, and memory-based retail state sensing are not implemented yet.",
+            ],
+        }
+        _write_report(baseline_artifact_dir / "report.json", baseline_report)
 
     if not game_dir.exists():
         _copy_game_tree(source_game_dir, game_dir)
@@ -1274,6 +1554,14 @@ def main() -> int:
                 dry_run=args.dry_run,
             )
 
+    if baseline_report is not None and isinstance(run_report, dict):
+        baseline_comparison = _compare_against_clean_baseline(
+            ffmpeg=ffmpeg,
+            baseline_report=baseline_report,
+            mutant_report={"run": run_report},
+        )
+        run_report = _augment_run_report_with_baseline(run_report, baseline_comparison)
+
     report = {
         "source_result": str(result_path),
         "semantic_source_result": str(source_result) if source_result is not None else None,
@@ -1291,16 +1579,22 @@ def main() -> int:
         "patched_archives": patched_archives,
         "wineboot": wineboot_report,
         "run": run_report,
+        "baseline": (
+            {
+                "artifact_dir": baseline_report.get("artifact_dir"),
+                "report": str((Path(str(baseline_report.get("artifact_dir"))) / "report.json").resolve()),
+                "comparison": baseline_comparison,
+            }
+            if isinstance(baseline_report, dict)
+            else None
+        ),
         "limitations": [
             "Launch-only mode still stops at process startup and does not prove stage ECL reached.",
             "Practice automation currently covers only Reimu A via X11 keyboard injection.",
             "Route play, dialogue skipping, and memory-based retail state sensing are not implemented yet.",
         ],
     }
-    (artifact_dir / "report.json").write_text(
-        json.dumps(report, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    _write_report(artifact_dir / "report.json", report)
     print(json.dumps(report, indent=2))
     return 0
 

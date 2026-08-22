@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -513,6 +514,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--retail", action="store_true")
     parser.add_argument("--retail-representative", default=RETAIL_REPRESENTATIVE_NAME)
     parser.add_argument("--retail-timeout-seconds", type=float, default=35.0)
+    parser.add_argument(
+        "--no-retail-compare-clean-baseline",
+        action="store_true",
+        help="skip the clean retail control run and screenshot diff when using --retail",
+    )
     return parser.parse_args()
 
 
@@ -715,7 +721,10 @@ def main() -> int:
         if matched is None:
             raise RuntimeError(f"missing representative metadata for {retail_representative}")
         retail_stage = int(matched["stage"])
-        retail_dir = artifact_dir / "retail"
+        retail_runs_dir = artifact_dir / "retail-runs"
+        ensure_directory(retail_runs_dir)
+        retail_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        retail_dir = retail_runs_dir / f"{retail_stamp}-{retail_representative}"
         command = [
             sys.executable,
             "-m",
@@ -731,6 +740,8 @@ def main() -> int:
             "--timeout-seconds",
             str(args.retail_timeout_seconds),
         ]
+        if not args.no_retail_compare_clean_baseline:
+            command.append("--compare-clean-baseline")
         subprocess.run(command, check=True)
         retail_summary = {
             "representative": retail_representative,
@@ -738,6 +749,7 @@ def main() -> int:
             "artifact_dir": str(retail_dir.resolve()),
             "report": str((retail_dir / "report.json").resolve()),
             "command": command,
+            "compare_clean_baseline": not args.no_retail_compare_clean_baseline,
         }
 
     summary = {

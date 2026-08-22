@@ -74,6 +74,14 @@ PYTHONPATH=src python3 findings/semantic/stages1-5-opening-op97-shared-segv-shor
   --retail
 ```
 
+That retail path now also runs a clean Stage 5 Practice control by default and
+compares the control screenshots against the mutated run. To skip the clean
+control, add `--no-retail-compare-clean-baseline`.
+
+Each retail invocation now writes into a fresh timestamped directory under
+`artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail-runs/`
+so reruns do not inherit prior Wine prefix or patched-game state.
+
 Tracked compact payload patches:
 
 - `payload_stage1_instruction_time_4096.json`
@@ -100,8 +108,13 @@ Current local evidence:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-clusters/20260822T222333Z/summary.json`
 - local reproduce summary:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/summary.json`
-- retail representative report:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail/report.json`
+- latest retail representative report:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail-runs/20260822T225522Z-stage5-difficulty-mask-96/report.json`
+- latest retail clean baseline report:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail-runs/20260822T225522Z-stage5-difficulty-mask-96/baseline/report.json`
+- ambiguous older retail artifacts worth keeping for archaeology:
+  - reused-state run: `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail/report.json`
+  - isolated fresh check: `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail-fresh-check/report.json`
 
 Current interpretation:
 
@@ -111,9 +124,26 @@ Current interpretation:
 - Stage 6 staying clean under the same edits suggests this is a real
   stage-clustered structural weakness, not a universal “mutate anything and
   crash” story;
-- retail: one Stage 5 representative (`stage5-difficulty-mask-96`) now has a
-  Wine confirmation artifact, but the current retail oracle classifies it as
-  `game-window-live` rather than a crash signature. The game window stayed
-  alive, the progress probe saw motion (`pixel_change_ratio ≈ 0.161`), and the
-  run timed out at the retail harness boundary instead of surfacing a direct
-  exception dialog or Wine crash line.
+- retail: under fresh isolated reruns on August 22, 2026, the Stage 5
+  representative (`stage5-difficulty-mask-96`) is not currently a stable
+  retail hit. The latest timestamped run is `baseline-equivalent`:
+
+  - clean retail baseline: `game-window-live`
+  - mutated retail run: `game-window-live`
+  - stage-entry screenshot diff: `0.0`
+  - progress-probe screenshot diff: `0.0`
+  - Wine crash signature: none
+
+  So the current clean retail evidence says this representative can pass the
+  existing Practice-stage oracle without visible divergence.
+
+  There is still a useful ambiguity worth preserving. Earlier on August 22,
+  2026:
+
+  - one reused-state run emitted a Wine page-fault line at `00412499`;
+  - one separate isolated fresh-check run stayed live but showed about `8.2%`
+    full-frame drift relative to its clean baseline.
+
+  At the moment that means: headless is solid; retail is unstable/ambiguous
+  under the current Wine + X11 automation and should not yet be treated as a
+  confirmed reproducible retail crash.
