@@ -68,6 +68,53 @@ def select_mutants(
     return filter_mutants_by_name(mutants, name_filters)
 
 
+def mutant_family(mutant: PayloadMutant, family_filters: Sequence[str] | None = None) -> str:
+    if family_filters:
+        for family_filter in family_filters:
+            if family_filter and family_filter in mutant.name:
+                return family_filter.rstrip("-")
+    parts = [part for part in mutant.name.split("-") if part]
+    if len(parts) >= 2:
+        return "-".join(parts[:2])
+    return mutant.name
+
+
+def select_diverse_mutants(
+    mutants: Sequence[PayloadMutant],
+    *,
+    limit: int | None,
+    family_filters: Sequence[str] | None = None,
+) -> list[PayloadMutant]:
+    if limit is None or limit >= len(mutants):
+        return list(mutants)
+    if limit <= 0:
+        return []
+
+    buckets: dict[str, list[PayloadMutant]] = {}
+    family_order: list[str] = []
+    for mutant in mutants:
+        family = mutant_family(mutant, family_filters)
+        if family not in buckets:
+            buckets[family] = []
+            family_order.append(family)
+        buckets[family].append(mutant)
+
+    selected: list[PayloadMutant] = []
+    while len(selected) < limit:
+        progressed = False
+        for family in family_order:
+            bucket = buckets[family]
+            if not bucket:
+                continue
+            selected.append(bucket.pop(0))
+            progressed = True
+            if len(selected) >= limit:
+                break
+        if not progressed:
+            break
+    return selected
+
+
 def resolve_campaign_profile(
     *,
     profile: str,
@@ -316,8 +363,11 @@ def main() -> int:
         include_structural=not args.no_structural,
         name_filters=profile["name_filters"],
     )
-    if args.limit is not None:
-        mutants = mutants[:args.limit]
+    mutants = select_diverse_mutants(
+        mutants,
+        limit=args.limit,
+        family_filters=profile["name_filters"],
+    )
 
     summary_path = artifact_dir / "summary.jsonl"
     totals = {"cases": 0, "interesting": 0}

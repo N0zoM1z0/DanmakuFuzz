@@ -10,8 +10,10 @@ from danmakufuzz.semantic.ecl_campaign import (
     classify_process_result,
     filter_mutants_by_name,
     infer_stage_from_ecl_name,
+    mutant_family,
     practice_stage_supported,
     resolve_campaign_profile,
+    select_diverse_mutants,
 )
 from danmakufuzz.semantic.minimize_case import TargetFinding, _ddmin_delete
 from danmakufuzz.semantic.payload_mutants import PayloadMutant
@@ -46,6 +48,33 @@ def test_filter_mutants_by_multiple_name_filters() -> None:
     ]
     filtered = filter_mutants_by_name(mutants, ["boss-timer-", "time-set-"])
     assert [mutant.name for mutant in filtered] == ["boss-timer-zero", "time-set-zero"]
+
+
+def test_mutant_family_prefers_filter_match() -> None:
+    mutant = PayloadMutant(name="bullet-count1-zero", payload=b"", source="ir")
+    assert mutant_family(mutant, ["bullet-count", "shoot-interval-"]) == "bullet-count"
+
+
+def test_select_diverse_mutants_round_robins_across_families() -> None:
+    mutants = [
+        PayloadMutant(name="bullet-count1-zero", payload=b"", source="ir"),
+        PayloadMutant(name="bullet-count2-zero", payload=b"", source="ir"),
+        PayloadMutant(name="bullet-count1-negative-one", payload=b"", source="ir"),
+        PayloadMutant(name="shoot-interval-zero", payload=b"", source="ir"),
+        PayloadMutant(name="shoot-interval-one", payload=b"", source="ir"),
+        PayloadMutant(name="time-set-zero", payload=b"", source="ir"),
+    ]
+    selected = select_diverse_mutants(
+        mutants,
+        limit=4,
+        family_filters=["bullet-count", "shoot-interval-", "time-set-"],
+    )
+    assert [mutant.name for mutant in selected] == [
+        "bullet-count1-zero",
+        "shoot-interval-zero",
+        "time-set-zero",
+        "bullet-count2-zero",
+    ]
 
 
 def test_resolve_campaign_profile_boss_defaults() -> None:

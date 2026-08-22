@@ -13,6 +13,7 @@ from .ecl_campaign import (
     infer_stage_from_ecl_name,
     practice_stage_supported,
     run_case,
+    select_diverse_mutants,
     select_mutants,
 )
 
@@ -126,8 +127,11 @@ def main() -> int:
             include_structural=False,
             name_filters=name_filters,
         )
-        if args.limit_per_seed is not None:
-            mutants = mutants[:args.limit_per_seed]
+        mutants = select_diverse_mutants(
+            mutants,
+            limit=args.limit_per_seed,
+            family_filters=name_filters,
+        )
 
         summary_path = seed_dir / "summary.jsonl"
         seed_totals = {"cases_run": 0, "interesting_cases": 0}

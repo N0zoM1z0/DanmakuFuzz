@@ -7,7 +7,14 @@ from pathlib import Path
 
 from ..headless.baseline import DEFAULT_ACTION_FILE, DEFAULT_GAME_DIR, default_headless_binary, run_baseline
 from ..repo import ARTIFACTS_DIR, REFERENCE_DIR, ensure_directory
-from .ecl_campaign import infer_stage_from_ecl_name, practice_stage_supported, resolve_campaign_profile, run_case, select_mutants
+from .ecl_campaign import (
+    infer_stage_from_ecl_name,
+    practice_stage_supported,
+    resolve_campaign_profile,
+    run_case,
+    select_diverse_mutants,
+    select_mutants,
+)
 
 
 def _default_artifact_dir() -> Path:
@@ -147,8 +154,11 @@ def main() -> int:
             include_structural=args.include_structural,
             name_filters=profile["name_filters"],
         )
-        if args.limit_per_seed is not None:
-            mutants = mutants[:args.limit_per_seed]
+        mutants = select_diverse_mutants(
+            mutants,
+            limit=args.limit_per_seed,
+            family_filters=profile["name_filters"],
+        )
 
         summary_path = seed_dir / "summary.jsonl"
         seed_totals = {"cases_run": 0, "interesting_cases": 0}
