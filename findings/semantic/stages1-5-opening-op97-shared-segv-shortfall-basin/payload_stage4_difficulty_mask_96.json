@@ -1,0 +1,16 @@
+{
+  "schema": "danmakufuzz-payload-patch-v1",
+  "base_size": 60792,
+  "target_size": 60792,
+  "base_sha256": "85283527d6dd1b0e9d4a94cbacdb429e14eaf7a6a336849ea00c8c3f49b652ac",
+  "target_sha256": "b73b50b67b279d1521fb30920344256ccf6f44e1be9db66ea469192b97c0844a",
+  "hunks": [
+    {
+      "base_start": 269,
+      "base_end": 270,
+      "data_b64_chunks": [
+        "YA=="
+      ]
+    }
+  ]
+}
