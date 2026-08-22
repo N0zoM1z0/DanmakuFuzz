@@ -101,9 +101,9 @@ def test_select_diverse_mutants_site_mode_spreads_across_sites() -> None:
     ]
 
 
-def test_resolve_selection_mode_auto_prefers_site_for_exploration() -> None:
+def test_resolve_selection_mode_auto_prefers_family_site_for_exploration() -> None:
     assert resolve_selection_mode(mutation_mode="deterministic", selection_mode="auto") == "family"
-    assert resolve_selection_mode(mutation_mode="exploration", selection_mode="auto") == "site"
+    assert resolve_selection_mode(mutation_mode="exploration", selection_mode="auto") == "family-site"
 
 
 def test_resolve_mutant_limit_applies_auto_budget_for_exploration() -> None:

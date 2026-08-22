@@ -147,7 +147,7 @@ def mutant_site(mutant: PayloadMutant) -> str:
 
 def resolve_selection_mode(*, mutation_mode: str, selection_mode: str) -> str:
     if selection_mode == "auto":
-        return "site" if mutation_mode == "exploration" else "family"
+        return "family-site" if mutation_mode == "exploration" else "family"
     if selection_mode not in {"family", "site", "family-site"}:
         raise ValueError(f"unsupported selection_mode: {selection_mode}")
     return selection_mode

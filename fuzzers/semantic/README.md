@@ -51,10 +51,16 @@ small automatic mutant budget instead of materializing the full sampled set:
 Pass an explicit `--limit` / `--limit-per-seed` / `--limit-per-task` to choose
 another budget, or `--full-mutant-set` to force the old unbounded behavior.
 
-When the campaign uses `selection_mode=site`, the exploration lane now also
-reorders mutants inside each ECL site before limit-based selection. This avoids
-the older append-order bias where low `--limit` runs mostly exercised the first
-family/value emitted per site, which was too close to template testing.
+Exploration mode now defaults `selection_mode=auto` to `family-site` instead of
+plain `site`. That keeps the small auto-budget from being swallowed by one
+high-site-count family such as `shoot-interval`, while still spreading picks
+across distinct opcode sites inside each family.
+
+When the campaign uses `selection_mode=site` or `selection_mode=family-site`,
+the exploration lane also reorders mutants inside each ECL site before
+limit-based selection. This avoids the older append-order bias where low
+`--limit` runs mostly exercised the first family/value emitted per site, which
+was too close to template testing.
 
 Sweep that reusable family set across the playable retail seeds with:
 
