@@ -160,6 +160,30 @@ def test_mutant_bucket_key_family_site_combines_dimensions() -> None:
     ) == "jump-offset|s04:i0019"
 
 
+def test_select_diverse_mutants_family_site_balances_families_before_sites() -> None:
+    mutants = [
+        PayloadMutant(name="shoot-interval-sampled-a", payload=b"", source="ir", path=(1, 5)),
+        PayloadMutant(name="shoot-interval-sampled-b", payload=b"", source="ir", path=(1, 6)),
+        PayloadMutant(name="shoot-interval-sampled-c", payload=b"", source="ir", path=(1, 7)),
+        PayloadMutant(name="bullet-count1-sampled-a", payload=b"", source="ir", path=(2, 3)),
+        PayloadMutant(name="bullet-count2-sampled-b", payload=b"", source="ir", path=(3, 3)),
+        PayloadMutant(name="jump-offset-sampled-a", payload=b"", source="ir", path=(4, 19)),
+    ]
+    selected = select_diverse_mutants(
+        mutants,
+        limit=5,
+        family_filters=["bullet-count", "shoot-interval-", "jump-offset-"],
+        selection_mode="family-site",
+    )
+    assert [mutant.name for mutant in selected] == [
+        "shoot-interval-sampled-a",
+        "bullet-count1-sampled-a",
+        "jump-offset-sampled-a",
+        "shoot-interval-sampled-b",
+        "bullet-count2-sampled-b",
+    ]
+
+
 def test_resolve_campaign_profile_boss_defaults() -> None:
     resolved = resolve_campaign_profile(
         profile="boss",

@@ -52,9 +52,11 @@ Pass an explicit `--limit` / `--limit-per-seed` / `--limit-per-task` to choose
 another budget, or `--full-mutant-set` to force the old unbounded behavior.
 
 Exploration mode now defaults `selection_mode=auto` to `family-site` instead of
-plain `site`. That keeps the small auto-budget from being swallowed by one
-high-site-count family such as `shoot-interval`, while still spreading picks
-across distinct opcode sites inside each family.
+plain `site`. In that mode, limit-based selection first round-robins across
+mutation families, then round-robins across opcode sites inside each family.
+That keeps the small auto-budget from being swallowed by one high-site-count
+family such as `shoot-interval`, while still spreading picks across distinct
+sites inside each family.
 
 When the campaign uses `selection_mode=site` or `selection_mode=family-site`,
 the exploration lane also reorders mutants inside each ECL site before

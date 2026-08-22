@@ -215,6 +215,56 @@ def select_diverse_mutants(
         return list(mutants)
     if limit <= 0:
         return []
+    if selection_mode == "family-site":
+        families: dict[str, dict[str, list[PayloadMutant]]] = {}
+        family_order: list[str] = []
+        site_order_by_family: dict[str, list[str]] = {}
+        next_site_index: dict[str, int] = {}
+        for mutant in mutants:
+            family_key = mutant_family(mutant, family_filters)
+            site_key = mutant_site(mutant)
+            if family_key not in families:
+                families[family_key] = {}
+                family_order.append(family_key)
+                site_order_by_family[family_key] = []
+                next_site_index[family_key] = 0
+            family_sites = families[family_key]
+            if site_key not in family_sites:
+                family_sites[site_key] = []
+                site_order_by_family[family_key].append(site_key)
+            family_sites[site_key].append(mutant)
+
+        def pop_next_family_site_mutant(family_key: str) -> PayloadMutant | None:
+            order = site_order_by_family[family_key]
+            if not order:
+                return None
+            attempts = 0
+            index = next_site_index[family_key]
+            while attempts < len(order):
+                site_key = order[index % len(order)]
+                index += 1
+                attempts += 1
+                bucket = families[family_key][site_key]
+                if bucket:
+                    next_site_index[family_key] = index % len(order)
+                    return bucket.pop(0)
+            next_site_index[family_key] = index % len(order)
+            return None
+
+        selected: list[PayloadMutant] = []
+        while len(selected) < limit:
+            progressed = False
+            for family_key in family_order:
+                mutant = pop_next_family_site_mutant(family_key)
+                if mutant is None:
+                    continue
+                selected.append(mutant)
+                progressed = True
+                if len(selected) >= limit:
+                    break
+            if not progressed:
+                break
+        return selected
 
     buckets: dict[str, list[PayloadMutant]] = {}
     family_order: list[str] = []
