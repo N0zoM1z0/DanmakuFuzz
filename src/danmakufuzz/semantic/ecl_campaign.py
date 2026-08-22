@@ -18,6 +18,16 @@ from .payload_mutants import PayloadMutant, generate_payload_mutants
 
 ECLDATA_RE = re.compile(r"ecldata(?P<stage>\d+)\.ecl$")
 LONG_ACTION_FILE = CONFIG_DIR / "headless_baseline_actions_1800.txt"
+DEFAULT_CORE_NAME_FILTERS = (
+    "jump-offset-",
+    "call-sub-",
+    "move-time-",
+    "shoot-interval-",
+    "bullet-count",
+    "drop-items-",
+    "drop-item-id-",
+    "time-set-",
+)
 DEFAULT_BOSS_NAME_FILTERS = (
     "boss-timer-",
     "life-callback-threshold-",
@@ -36,6 +46,10 @@ def infer_stage_from_ecl_name(path: Path) -> int:
 
 def default_seed_ecl() -> Path:
     return REFERENCE_DIR / "corpus" / "ecl" / "original" / "ecldata6.ecl"
+
+
+def practice_stage_supported(stage: int) -> bool:
+    return 1 <= stage <= 6
 
 
 def filter_mutants_by_name(mutants: list[PayloadMutant], name_filters: Sequence[str] | None) -> list[PayloadMutant]:
@@ -70,6 +84,11 @@ def resolve_campaign_profile(
     resolved_timeout = timeout_seconds
     resolved_continue_after_hit = continue_after_hit
     resolved_case_prefix = case_prefix
+    if profile == "core":
+        if resolved_case_prefix == "campaign":
+            resolved_case_prefix = "core"
+        if not resolved_filters:
+            resolved_filters = list(DEFAULT_CORE_NAME_FILTERS)
     if profile == "boss":
         if resolved_action_file == DEFAULT_ACTION_FILE.resolve():
             resolved_action_file = LONG_ACTION_FILE
@@ -240,7 +259,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--shot-type", type=int, default=0)
     parser.add_argument("--max-ticks", type=int, default=600)
     parser.add_argument("--timeout-seconds", type=float, default=5.0)
-    parser.add_argument("--profile", choices=("default", "boss"), default="default")
+    parser.add_argument("--profile", choices=("default", "core", "boss"), default="default")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--name-filter", action="append")
     parser.add_argument("--case-prefix", type=str, default="campaign")

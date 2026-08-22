@@ -5,28 +5,33 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 
-from ..headless.baseline import DEFAULT_GAME_DIR, default_headless_binary, run_baseline
+from ..headless.baseline import DEFAULT_ACTION_FILE, DEFAULT_GAME_DIR, default_headless_binary, run_baseline
 from ..repo import ARTIFACTS_DIR, REFERENCE_DIR, ensure_directory
-from .ecl_campaign import (
-    DEFAULT_BOSS_NAME_FILTERS,
-    LONG_ACTION_FILE,
-    infer_stage_from_ecl_name,
-    practice_stage_supported,
-    run_case,
-    select_mutants,
-)
+from .ecl_campaign import infer_stage_from_ecl_name, practice_stage_supported, resolve_campaign_profile, run_case, select_mutants
 
 
 def _default_artifact_dir() -> Path:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return ARTIFACTS_DIR / "semantic-boss-sweep" / stamp
+    return ARTIFACTS_DIR / "semantic-family-sweep" / stamp
+
+
 def default_seed_ecls() -> list[Path]:
     return sorted((REFERENCE_DIR / "corpus" / "ecl" / "original").glob("ecldata*.ecl"))
 
 
-def _summarize_boss_baseline(trace_path: Path) -> dict[str, int | str | None]:
+def _peak_count(record: dict[str, object], key: str) -> int:
+    value = record.get(key)
+    if isinstance(value, list):
+        return len(value)
+    return 0
+
+
+def _summarize_baseline(trace_path: Path) -> dict[str, int | str | None]:
     max_tick = 0
-    boss_ticks = 0
+    peak_bullets = 0
+    peak_lasers = 0
+    peak_enemies = 0
+    peak_items = 0
     terminal_reason: str | None = None
     with trace_path.open("r", encoding="utf-8") as handle:
         for line in handle:
@@ -36,20 +41,26 @@ def _summarize_boss_baseline(trace_path: Path) -> dict[str, int | str | None]:
             tick = record.get("tick")
             if isinstance(tick, int):
                 max_tick = tick
-            boss_ui = record.get("boss_ui")
-            if isinstance(boss_ui, dict) and boss_ui.get("present"):
-                boss_ticks += 1
+            peak_bullets = max(peak_bullets, _peak_count(record, "bullets"))
+            peak_lasers = max(peak_lasers, _peak_count(record, "lasers"))
+            peak_enemies = max(peak_enemies, _peak_count(record, "enemies"))
+            peak_items = max(peak_items, _peak_count(record, "items"))
             reason = record.get("terminal_reason")
             terminal_reason = reason if isinstance(reason, str) else terminal_reason
     return {
         "max_tick": max_tick,
-        "boss_ticks": boss_ticks,
+        "peak_bullets": peak_bullets,
+        "peak_lasers": peak_lasers,
+        "peak_enemies": peak_enemies,
+        "peak_items": peak_items,
         "terminal_reason": terminal_reason,
     }
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Sweep boss-oriented semantic mutator families across multiple retail ECL seeds.")
+    parser = argparse.ArgumentParser(
+        description="Sweep reusable semantic mutator families across multiple retail ECL seeds."
+    )
     parser.add_argument("--seed-ecl", action="append", type=Path)
     parser.add_argument("--artifact-dir", type=Path)
     parser.add_argument("--game-dir", type=Path, default=DEFAULT_GAME_DIR)
@@ -58,15 +69,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--difficulty", type=int, default=3)
     parser.add_argument("--character", type=int, default=0)
     parser.add_argument("--shot-type", type=int, default=0)
-    parser.add_argument("--actions", type=Path, default=LONG_ACTION_FILE)
-    parser.add_argument("--max-ticks", type=int, default=1800)
-    parser.add_argument("--timeout-seconds", type=float, default=15.0)
+    parser.add_argument("--actions", type=Path, default=DEFAULT_ACTION_FILE)
+    parser.add_argument("--max-ticks", type=int, default=600)
+    parser.add_argument("--timeout-seconds", type=float, default=5.0)
+    parser.add_argument("--profile", choices=("default", "core", "boss"), default="core")
     parser.add_argument("--limit-per-seed", type=int)
     parser.add_argument("--name-filter", action="append")
+    parser.add_argument("--include-structural", action="store_true")
     parser.add_argument("--auto-shoot", dest="auto_shoot", action="store_true")
     parser.add_argument("--no-auto-shoot", dest="auto_shoot", action="store_false")
     parser.set_defaults(auto_shoot=True)
-    parser.add_argument("--continue-after-hit", action="store_true", default=True)
+    parser.add_argument("--continue-after-hit", action="store_true")
     return parser.parse_args()
 
 
@@ -75,7 +88,15 @@ def main() -> int:
     seed_ecls = [path.resolve() for path in args.seed_ecl] if args.seed_ecl else [path.resolve() for path in default_seed_ecls()]
     artifact_dir = (args.artifact_dir or _default_artifact_dir()).resolve()
     ensure_directory(artifact_dir)
-    name_filters = args.name_filter or list(DEFAULT_BOSS_NAME_FILTERS)
+    profile = resolve_campaign_profile(
+        profile=args.profile,
+        action_file=args.actions.resolve(),
+        max_ticks=args.max_ticks,
+        timeout_seconds=args.timeout_seconds,
+        continue_after_hit=args.continue_after_hit,
+        case_prefix="campaign",
+        name_filters=args.name_filter,
+    )
 
     totals = {"seeds_considered": 0, "seeds_run": 0, "cases_run": 0, "interesting_cases": 0}
     seed_summaries: list[dict[str, object]] = []
@@ -106,25 +127,25 @@ def main() -> int:
             resource_override_dir=None,
             stage=stage,
             seed=args.seed,
-            action_file=args.actions.resolve(),
+            action_file=Path(profile["action_file"]),
             artifact_dir=baseline_dir,
             difficulty=args.difficulty,
             character=args.character,
             shot_type=args.shot_type,
-            max_ticks=args.max_ticks,
+            max_ticks=int(profile["max_ticks"]),
             auto_shoot=args.auto_shoot,
-            continue_after_hit=args.continue_after_hit,
+            continue_after_hit=bool(profile["continue_after_hit"]),
             dry_run=False,
         )
         baseline_trace_value = baseline_metadata.get("trace")
         baseline_trace = Path(baseline_trace_value) if isinstance(baseline_trace_value, str) else None
         if baseline_trace is None or not baseline_trace.is_file():
-            raise RuntimeError(f"boss sweep baseline trace missing for {seed_ecl}")
+            raise RuntimeError(f"family sweep baseline trace missing for {seed_ecl}")
 
         mutants = select_mutants(
             seed_ecl.read_bytes(),
-            include_structural=False,
-            name_filters=name_filters,
+            include_structural=args.include_structural,
+            name_filters=profile["name_filters"],
         )
         if args.limit_per_seed is not None:
             mutants = mutants[:args.limit_per_seed]
@@ -138,14 +159,14 @@ def main() -> int:
                     game_dir=args.game_dir.resolve(),
                     stage=stage,
                     seed=args.seed,
-                    action_file=args.actions.resolve(),
+                    action_file=Path(profile["action_file"]),
                     difficulty=args.difficulty,
                     character=args.character,
                     shot_type=args.shot_type,
-                    max_ticks=args.max_ticks,
+                    max_ticks=int(profile["max_ticks"]),
                     auto_shoot=args.auto_shoot,
-                    continue_after_hit=args.continue_after_hit,
-                    timeout_seconds=args.timeout_seconds,
+                    continue_after_hit=bool(profile["continue_after_hit"]),
+                    timeout_seconds=float(profile["timeout_seconds"]),
                     campaign_dir=seed_dir,
                     seed_name=seed_ecl.name,
                     mutant=mutant,
@@ -155,28 +176,33 @@ def main() -> int:
                 seed_totals["cases_run"] += 1
                 seed_totals["interesting_cases"] += int(bool(result["interesting"]))
                 summary_handle.write(json.dumps(result) + "\n")
-                print(json.dumps(
-                    {
-                        "seed_ecl": str(seed_ecl),
-                        "case_name": result["case_name"],
-                        "mutant_name": result["mutant_name"],
-                        "interesting": result["interesting"],
-                        "findings": result["findings"],
-                    },
-                    ensure_ascii=False,
-                ))
+                print(
+                    json.dumps(
+                        {
+                            "profile": profile["profile"],
+                            "seed_ecl": str(seed_ecl),
+                            "case_name": result["case_name"],
+                            "mutant_name": result["mutant_name"],
+                            "interesting": result["interesting"],
+                            "findings": result["findings"],
+                        },
+                        ensure_ascii=False,
+                    )
+                )
 
         totals["seeds_run"] += 1
         totals["cases_run"] += seed_totals["cases_run"]
         totals["interesting_cases"] += seed_totals["interesting_cases"]
         seed_summary = {
+            "profile": profile["profile"],
             "seed_ecl": str(seed_ecl),
             "stage": stage,
-            "name_filters": list(name_filters),
-            "actions": str(args.actions.resolve()),
-            "max_ticks": args.max_ticks,
-            "continue_after_hit": args.continue_after_hit,
-            "baseline": _summarize_boss_baseline(baseline_trace),
+            "name_filters": list(profile["name_filters"]),
+            "include_structural": args.include_structural,
+            "actions": str(Path(profile["action_file"]).resolve()),
+            "max_ticks": int(profile["max_ticks"]),
+            "continue_after_hit": bool(profile["continue_after_hit"]),
+            "baseline": _summarize_baseline(baseline_trace),
             "mutants_generated": len(mutants),
             "cases_run": seed_totals["cases_run"],
             "interesting_cases": seed_totals["interesting_cases"],
@@ -188,7 +214,9 @@ def main() -> int:
 
     report = {
         "artifact_dir": str(artifact_dir),
-        "name_filters": list(name_filters),
+        "profile": profile["profile"],
+        "name_filters": list(profile["name_filters"]),
+        "include_structural": args.include_structural,
         "totals": totals,
         "seeds": seed_summaries,
         "skipped": skipped,

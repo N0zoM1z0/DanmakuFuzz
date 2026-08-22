@@ -3,13 +3,14 @@ from pathlib import Path
 from danmakufuzz.ecl_ir.model import EclFile, EclSubroutine, RawInstruction
 from danmakufuzz.ecl_ir.mutators import generate_targeted_mutants
 from danmakufuzz.interestingness.rules import Finding
-from danmakufuzz.semantic.boss_sweep import practice_stage_supported
 from danmakufuzz.semantic.ecl_campaign import (
+    DEFAULT_CORE_NAME_FILTERS,
     DEFAULT_BOSS_NAME_FILTERS,
     LONG_ACTION_FILE,
     classify_process_result,
     filter_mutants_by_name,
     infer_stage_from_ecl_name,
+    practice_stage_supported,
     resolve_campaign_profile,
 )
 from danmakufuzz.semantic.minimize_case import TargetFinding, _ddmin_delete
@@ -63,6 +64,24 @@ def test_resolve_campaign_profile_boss_defaults() -> None:
     assert resolved["continue_after_hit"] is True
     assert resolved["case_prefix"] == "boss"
     assert resolved["name_filters"] == list(DEFAULT_BOSS_NAME_FILTERS)
+
+
+def test_resolve_campaign_profile_core_defaults() -> None:
+    resolved = resolve_campaign_profile(
+        profile="core",
+        action_file=Path("config/headless_baseline_actions.txt"),
+        max_ticks=600,
+        timeout_seconds=5.0,
+        continue_after_hit=False,
+        case_prefix="campaign",
+        name_filters=None,
+    )
+    assert resolved["action_file"] == Path("config/headless_baseline_actions.txt").resolve()
+    assert resolved["max_ticks"] == 600
+    assert resolved["timeout_seconds"] == 5.0
+    assert resolved["continue_after_hit"] is False
+    assert resolved["case_prefix"] == "core"
+    assert resolved["name_filters"] == list(DEFAULT_CORE_NAME_FILTERS)
 
 
 def test_practice_stage_supported_skips_stage_seven() -> None:

@@ -21,6 +21,26 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.ecl_campaign \
   --limit 32
 ```
 
+Switch that entrypoint into the reusable cross-game `core` profile with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.ecl_campaign \
+  --profile core \
+  --seed-ecl reference/corpus/ecl/original/ecldata6.ecl \
+  --limit 32
+```
+
+The `core` profile narrows mutation selection to portable control-flow, timing,
+bullet-count, drop-item, and `time-set` families. It skips structural payload
+damage and boss-only families by default.
+
+Sweep that reusable family set across the playable retail seeds with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.family_sweep \
+  --limit-per-seed 8
+```
+
 Switch that entrypoint into a longer boss-oriented profile with:
 
 ```sh
