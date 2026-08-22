@@ -81,3 +81,5 @@ The retail runner now records a window census and classifies at least:
 
 - `game-window-live`
 - `crash-dialog`
+- `wine-crash-log`
+- `abnormal-exit`

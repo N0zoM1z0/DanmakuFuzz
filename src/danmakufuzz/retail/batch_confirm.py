@@ -314,6 +314,52 @@ def _select_queue_cases(results: list[Path], args: argparse.Namespace) -> list[Q
     return queue
 
 
+def _headless_retail_matrix(entries: list[dict[str, object]]) -> list[dict[str, object]]:
+    grouped: dict[str, dict[str, object]] = {}
+    for entry in entries:
+        primary = entry.get("primary_finding")
+        if isinstance(primary, dict) and isinstance(primary.get("key"), str):
+            headless_key = primary["key"]
+        else:
+            headless_key = "unknown"
+        retail_classification = (
+            entry.get("classification") if isinstance(entry.get("classification"), str) else "unknown"
+        )
+        group = grouped.setdefault(
+            headless_key,
+            {
+                "headless_finding": headless_key,
+                "cases": 0,
+                "retail_classifications": Counter(),
+                "examples": [],
+            },
+        )
+        group["cases"] += 1
+        group["retail_classifications"][retail_classification] += 1
+        examples = group["examples"]
+        if isinstance(examples, list) and len(examples) < 3:
+            examples.append(
+                {
+                    "case_name": entry.get("case_name"),
+                    "classification": retail_classification,
+                    "artifact_dir": entry.get("artifact_dir"),
+                }
+            )
+    rows: list[dict[str, object]] = []
+    for key in sorted(grouped):
+        group = grouped[key]
+        classifications = group["retail_classifications"]
+        rows.append(
+            {
+                "headless_finding": key,
+                "cases": group["cases"],
+                "retail_classifications": dict(sorted(classifications.items())),
+                "examples": group["examples"],
+            }
+        )
+    return rows
+
+
 def main() -> int:
     args = parse_args()
     if not args.result and not args.from_minimized:
@@ -407,15 +453,21 @@ def main() -> int:
             report = _load_report(report_path) if report_path.is_file() else None
             termination_reason = None
             oracle_classification = None
+            run_oracle = None
+            wine_log = None
             if isinstance(report, dict):
                 run = report.get("run")
                 if isinstance(run, dict):
                     termination_reason = run.get("termination_reason")
+                    run_oracle = run.get("oracle") if isinstance(run.get("oracle"), dict) else None
+                    wine_log = run.get("wine_log") if isinstance(run.get("wine_log"), dict) else None
                     control = run.get("control")
                     if isinstance(control, dict):
                         oracle = control.get("oracle")
                         if isinstance(oracle, dict):
                             oracle_classification = oracle.get("classification")
+                    if run_oracle is not None and isinstance(run_oracle.get("classification"), str):
+                        oracle_classification = run_oracle.get("classification")
             classification = (
                 str(termination_reason)
                 if isinstance(termination_reason, str)
@@ -445,6 +497,13 @@ def main() -> int:
                 "classification": classification,
                 "report_present": report_path.is_file(),
             }
+            if isinstance(run_oracle, dict):
+                entry["retail_oracle"] = run_oracle
+            if isinstance(wine_log, dict):
+                entry["wine_log"] = {
+                    "classification": wine_log.get("classification"),
+                    "primary_signature": wine_log.get("primary_signature"),
+                }
             entries.append(entry)
             lines.write(json.dumps(entry, sort_keys=True) + "\n")
             lines.flush()
@@ -469,6 +528,7 @@ def main() -> int:
         "cases_attempted": len(entries),
         "classifications": dict(sorted(classifications.items())),
         "stopped_early": stopped_early,
+        "headless_retail_matrix": _headless_retail_matrix(entries),
         "queue": queue_summary,
         "entries": entries,
     }

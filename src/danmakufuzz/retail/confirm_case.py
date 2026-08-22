@@ -38,6 +38,12 @@ TAP_SETTLE_SECONDS = 0.80
 DEFAULT_STARTUP_SECONDS = 5.0
 DEFAULT_STAGE_ENTRY_WAIT_SECONDS = 3.0
 DEFAULT_SCREEN_SIZE = "1024x768x24"
+WINE_CRASH_LOG_TOKENS = (
+    "unhandled page fault",
+    "unhandled exception",
+    "starting debugger",
+)
+WINE_ERROR_LOG_TOKEN = "err:"
 
 
 def _sha256(path: Path) -> str:
@@ -333,14 +339,25 @@ def _run_launch_only(
         stderr=subprocess.DEVNULL,
         check=False,
     )
+    wine_log = _summarize_wine_log(log_path)
+    final_oracle = _classify_retail_outcome(
+        window_oracle=None,
+        wine_log=wine_log,
+        observed_returncode=returncode,
+        timed_out=timed_out,
+    )
     return {
         "command": command,
         "cwd": str(game_dir.resolve()),
         "log": str(log_path.resolve()),
         "returncode": returncode,
+        "observed_returncode": returncode,
         "timed_out": timed_out,
         "elapsed_seconds": time.time() - started,
         "dry_run": False,
+        "termination_reason": final_oracle["classification"],
+        "oracle": final_oracle,
+        "wine_log": wine_log,
     }
 
 
@@ -527,6 +544,94 @@ def _classify_window_census(census: dict[str, object]) -> dict[str, object]:
         "interesting": False,
         "crash_titles": [],
         "game_titles": [],
+    }
+
+
+def _summarize_wine_log(log_path: Path, *, max_lines: int = 8) -> dict[str, object]:
+    if not log_path.is_file():
+        return {
+            "path": str(log_path.resolve()),
+            "classification": "missing-log",
+            "interesting": False,
+            "primary_signature": None,
+            "crash_lines": [],
+            "error_lines": [],
+        }
+    crash_lines: list[str] = []
+    error_lines: list[str] = []
+    text = log_path.read_text(encoding="utf-8", errors="replace")
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        lowered = line.lower()
+        if any(token in lowered for token in WINE_CRASH_LOG_TOKENS):
+            if line not in crash_lines and len(crash_lines) < max_lines:
+                crash_lines.append(line)
+            continue
+        if WINE_ERROR_LOG_TOKEN in lowered and line not in error_lines and len(error_lines) < max_lines:
+            error_lines.append(line)
+    return {
+        "path": str(log_path.resolve()),
+        "classification": "wine-crash-log" if crash_lines else "no-crash-signature",
+        "interesting": bool(crash_lines),
+        "primary_signature": crash_lines[0] if crash_lines else None,
+        "crash_lines": crash_lines,
+        "error_lines": error_lines,
+    }
+
+
+def _classify_retail_outcome(
+    *,
+    window_oracle: dict[str, object] | None,
+    wine_log: dict[str, object],
+    observed_returncode: int | None,
+    timed_out: bool,
+) -> dict[str, object]:
+    window_classification = (
+        window_oracle.get("classification")
+        if isinstance(window_oracle, dict) and isinstance(window_oracle.get("classification"), str)
+        else None
+    )
+    sources: list[str] = []
+    if window_classification is not None:
+        sources.append("window-census")
+    if wine_log.get("classification") == "wine-crash-log":
+        sources.append("wine-log")
+    if observed_returncode is not None:
+        sources.append("process-exit")
+
+    if window_classification == "crash-dialog":
+        classification = "crash-dialog"
+        interesting = True
+    elif wine_log.get("classification") == "wine-crash-log":
+        classification = "wine-crash-log"
+        interesting = True
+    elif observed_returncode not in (None, 0):
+        classification = "abnormal-exit"
+        interesting = True
+    elif window_classification is not None and window_classification != "unknown":
+        classification = window_classification
+        interesting = bool(window_oracle.get("interesting")) if isinstance(window_oracle, dict) else False
+    elif timed_out:
+        classification = "retail-timeout"
+        interesting = False
+    elif observed_returncode == 0:
+        classification = "clean-exit"
+        interesting = False
+    else:
+        classification = "unknown"
+        interesting = False
+
+    return {
+        "classification": classification,
+        "interesting": interesting,
+        "sources": sources,
+        "window_oracle_classification": window_classification,
+        "wine_log_classification": wine_log.get("classification"),
+        "wine_log_primary_signature": wine_log.get("primary_signature"),
+        "observed_returncode": observed_returncode,
+        "timed_out": timed_out,
     }
 
 
@@ -748,8 +853,9 @@ def _run_retail_with_practice_control(
     game_process = None
     timed_out = False
     control_report = None
-    termination_reason = None
     oracle_terminal = False
+    observed_returncode = None
+    cleanup_killed_process = False
     started = time.time()
     try:
         xvfb_process, xvfb_report = _start_xvfb(
@@ -800,7 +906,6 @@ def _run_retail_with_practice_control(
             )
             oracle = control_report.get("oracle") if isinstance(control_report, dict) else None
             classification = oracle.get("classification") if isinstance(oracle, dict) else None
-            termination_reason = classification
             if classification == "crash-dialog":
                 oracle_terminal = True
                 timed_out = False
@@ -813,9 +918,12 @@ def _run_retail_with_practice_control(
                         timed_out = True
                 elif game_process.poll() is None:
                     timed_out = True
+            observed_returncode = game_process.poll()
         finally:
             game_log_handle.close()
     finally:
+        if game_process is not None and game_process.poll() is None:
+            cleanup_killed_process = True
         if game_process is not None and game_process.poll() is None and not oracle_terminal:
             timed_out = True
         subprocess.run(
@@ -850,6 +958,18 @@ def _run_retail_with_practice_control(
             if log_handle is not None:
                 log_handle.close()
 
+    wine_log = _summarize_wine_log(game_log_path)
+    final_oracle = _classify_retail_outcome(
+        window_oracle=(
+            control_report.get("oracle")
+            if isinstance(control_report, dict) and isinstance(control_report.get("oracle"), dict)
+            else None
+        ),
+        wine_log=wine_log,
+        observed_returncode=observed_returncode,
+        timed_out=timed_out,
+    )
+
     return {
         "mode": "practice-stage",
         "command": command,
@@ -859,10 +979,14 @@ def _run_retail_with_practice_control(
         "log": str(game_log_path.resolve()),
         "prefix_log": str(prefix_log_path.resolve()),
         "returncode": game_process.returncode if game_process is not None else None,
+        "observed_returncode": observed_returncode,
+        "cleanup_killed_process": cleanup_killed_process,
         "timed_out": timed_out,
         "elapsed_seconds": time.time() - started,
         "dry_run": False,
-        "termination_reason": termination_reason,
+        "termination_reason": final_oracle["classification"],
+        "oracle": final_oracle,
+        "wine_log": wine_log,
         "control": control_report,
     }
 

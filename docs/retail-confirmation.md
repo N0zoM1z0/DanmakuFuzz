@@ -98,7 +98,8 @@ The batch wrapper writes a parent artifact directory containing:
 
 - one child artifact directory per case;
 - `results.jsonl` with one summary row per replayed case;
-- `summary.json` with aggregated classification counts, queue metadata, and per-case locations.
+- `summary.json` with aggregated classification counts, queue metadata, per-case locations,
+  and a `headless_retail_matrix` summary keyed by the primary headless finding.
 
 ## Current limitation
 
@@ -117,6 +118,14 @@ It also has a first-pass retail oracle:
   start sequence and observation delay;
 - `crash-dialog` when Wine exposes `プログラム エラー` or `Wine Debugger`
   windows after stage start.
+
+It now carries extra evidence on top of that window layer:
+
+- `wine-crash-log` when `wine.log` shows an unhandled page fault / debugger
+  signature even if the window census alone would be weak;
+- `abnormal-exit` when the retail process exits with a non-zero observed code
+  without a stronger crash-dialog/log signature;
+- `wine_log.primary_signature` in `report.json` for a compact crash fingerprint.
 
 It still does not prove:
 
