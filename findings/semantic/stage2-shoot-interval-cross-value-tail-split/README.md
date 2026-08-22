@@ -49,6 +49,8 @@ Current local evidence:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-core-grid-c/summary.json`
 - exact 1800-tick confirmation rerun:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exact-rerun/20260822T-stage23-recheck-a/summary.jsonl`
+- retail launch/progress smoke for the `shoot-interval=179` representative:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage2-shoot-interval-cross-value-tail-split-retail-a/retail/report.json`
 - earlier single-value predecessor on the same site family:
   `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage2-shoot-interval-one-bullet-flood/README.md`
 
@@ -66,6 +68,8 @@ Current interpretation:
 - headless: clearly interesting and reproducible;
 - the fun part is the split itself: one near-baseline value creates the deeper
   `1212` tail wedge, while a farther-away value creates a milder `1225` skew;
-- retail: not rerun yet from this exact finding directory, but the reproducer
-  is ready to drive the `shoot-interval=179` representative through Practice
-  Stage 2.
+- retail: on August 22, 2026, the `shoot-interval=179` smoke reached a live
+  game window under Wine, changed `170679 / 786432` pixels during the progress
+  probe (`0.21702957153320312`), and did not produce a Wine crash signature;
+- that retail result is still only a launch/progress smoke, not proof that the
+  exact late `1212` headless wedge also manifests in retail.

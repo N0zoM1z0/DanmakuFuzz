@@ -48,6 +48,8 @@ Current local evidence:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-core-grid-c/summary.json`
 - exact 1800-tick confirmation rerun:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exact-rerun/20260822T-stage23-recheck-a/summary.jsonl`
+- retail launch/progress smoke for the `shoot-interval=192` representative:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage3-shoot-interval-cross-value-tail-extension-retail-a/retail/report.json`
 - related Stage 3 structural findings:
   `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage3-call-sub-zero-in-range-next-time-negative/README.md`
   and
@@ -67,6 +69,8 @@ Current interpretation:
 - headless: clearly interesting and reproducible;
 - the shared part is the late tail extension to `1680 / 1730`, not one
   identical full trace;
-- retail: not rerun yet from this exact finding directory, but the reproducer
-  is ready to drive the `shoot-interval=192` representative through Practice
-  Stage 3.
+- retail: on August 22, 2026, the `shoot-interval=192` smoke reached a live
+  game window under Wine, changed `139599 / 786432` pixels during the progress
+  probe (`0.17750930786132812`), and did not produce a Wine crash signature;
+- that retail result is still only a launch/progress smoke, not proof that the
+  exact late `1680 / 1730` headless tail also manifests in retail.
