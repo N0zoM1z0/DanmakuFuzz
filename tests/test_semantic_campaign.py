@@ -82,3 +82,51 @@ def test_generate_targeted_mutants_includes_semantic_interval_and_move_time_muta
     names = {mutant.name for mutant in generate_targeted_mutants(ecl)}
     assert {"shoot-interval-zero", "shoot-interval-one", "shoot-interval-negative-one"} <= names
     assert {"move-time-zero", "move-time-negative-one"} <= names
+
+
+def test_generate_targeted_mutants_includes_drop_item_mutants() -> None:
+    ecl = EclFile(
+        sub_count=1,
+        main_count=0,
+        timeline_offsets=(0, 0, 0),
+        timeline=[],
+        subs=[
+            EclSubroutine(
+                file_offset=0,
+                instructions=[
+                    RawInstruction(
+                        time=0,
+                        opcode=119,
+                        offset_to_next=16,
+                        unk8=0,
+                        skip_for_difficulty=0,
+                        unk_a=0,
+                        unk_b=0,
+                        args=(3).to_bytes(4, "little", signed=True),
+                    ),
+                    RawInstruction(
+                        time=0,
+                        opcode=124,
+                        offset_to_next=16,
+                        unk8=0,
+                        skip_for_difficulty=0,
+                        unk_a=0,
+                        unk_b=0,
+                        args=(1).to_bytes(4, "little", signed=True),
+                    ),
+                    RawInstruction(
+                        time=0,
+                        opcode=121,
+                        offset_to_next=16,
+                        unk8=0,
+                        skip_for_difficulty=0,
+                        unk_a=0,
+                        unk_b=0,
+                        args=(0).to_bytes(4, "little", signed=True),
+                    ),
+                ],
+            )
+        ],
+    )
+    names = {mutant.name for mutant in generate_targeted_mutants(ecl)}
+    assert {"drop-items-32", "drop-item-id-life", "exinscall-17"} <= names

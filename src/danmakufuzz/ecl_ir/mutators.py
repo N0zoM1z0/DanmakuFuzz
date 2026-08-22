@@ -22,9 +22,12 @@ OP_LASERCANCEL = 92
 OP_SPELLCARDSTART = 93
 OP_ANMSETSLOT = 99
 OP_ENEMYINTERRUPTSET = 109
-OP_EXINSCALL = 122
-OP_BOSSSETLIFECOUNT = 125
-OP_ANMINTERRUPTSLOT = 127
+OP_DROPITEMS = 119
+OP_EXINSCALL = 121
+OP_EXINSREPEAT = 122
+OP_DROPITEMID = 124
+OP_BOSSSETLIFECOUNT = 126
+OP_ANMINTERRUPTSLOT = 129
 
 
 @dataclass(frozen=True)
@@ -144,6 +147,12 @@ def generate_targeted_mutants(ecl: EclFile) -> list[Mutant]:
                         ecl, sub_index, instruction_index,
                         RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
                     )))
+            if instruction.opcode == OP_EXINSREPEAT and len(instruction.args) >= 4:
+                for name, value in (("exinsrepeat-negative-one", -1), ("exinsrepeat-17", 17)):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
+                    )))
             if instruction.opcode == OP_SPELLCARDSTART and len(instruction.args) >= 4:
                 mutants.append(Mutant("spellcard-id-64", key, _clone_with_mutated_instruction(
                     ecl, sub_index, instruction_index,
@@ -166,6 +175,27 @@ def generate_targeted_mutants(ecl: EclFile) -> list[Mutant]:
                     mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
                         ecl, sub_index, instruction_index,
                         RawInstruction(**{**instruction.__dict__, "args": mutate(instruction.args, offset, value)})
+                    )))
+            if instruction.opcode == OP_DROPITEMS and len(instruction.args) >= 4:
+                for name, value in (
+                    ("drop-items-zero", 0),
+                    ("drop-items-one", 1),
+                    ("drop-items-32", 32),
+                    ("drop-items-negative-one", -1),
+                ):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
+                    )))
+            if instruction.opcode == OP_DROPITEMID and len(instruction.args) >= 4:
+                for name, value in (
+                    ("drop-item-id-full-power", 4),
+                    ("drop-item-id-life", 5),
+                    ("drop-item-id-point-bullet", 6),
+                ):
+                    mutants.append(Mutant(name, key, _clone_with_mutated_instruction(
+                        ecl, sub_index, instruction_index,
+                        RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, value)})
                     )))
             if instruction.opcode == OP_ANMINTERRUPTSLOT and len(instruction.args) >= 4:
                 mutants.append(Mutant("anm-interrupt-slot-255", key, _clone_with_mutated_instruction(

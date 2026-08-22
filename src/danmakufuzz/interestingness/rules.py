@@ -44,7 +44,7 @@ def _walk_numbers(value: Any, findings: list[Finding], path: str = "$") -> None:
             _walk_numbers(nested, findings, f"{path}[{index}]")
 
 
-def score_trace(path: Path, *, stall_window: int = 240, bullet_limit: int = 1024) -> list[Finding]:
+def score_trace(path: Path, *, stall_window: int = 240, bullet_limit: int = 1024, item_limit: int = 256) -> list[Finding]:
     findings: list[Finding] = []
     last_frame: int | None = None
     repeated_frames = 0
@@ -71,6 +71,9 @@ def score_trace(path: Path, *, stall_window: int = 240, bullet_limit: int = 1024
             enemies = record.get("enemies")
             if isinstance(enemies, list) and len(enemies) > 512:
                 findings.append(Finding("enemy-explosion", f"line {line_number} enemy_count={len(enemies)}"))
+            items = record.get("items")
+            if isinstance(items, list) and len(items) > item_limit:
+                findings.append(Finding("item-explosion", f"line {line_number} item_count={len(items)}"))
             terminal_reason = record.get("terminal_reason")
             if terminal_reason and terminal_reason not in {"physical-hit", "tick-limit", "input-error"}:
                 findings.append(Finding("unexpected-terminal", str(terminal_reason)))
@@ -85,7 +88,10 @@ def score_trace_differential(
     bullet_drift_threshold: int = 8,
     enemy_drift_threshold: int = 2,
     laser_drift_threshold: int = 1,
+    item_drift_threshold: int = 4,
     score_drift_threshold: int = 100,
+    power_drift_threshold: int = 8,
+    point_item_drift_threshold: int = 1,
     shortfall_threshold: int = 32,
 ) -> list[Finding]:
     baseline_records = _load_trace_records(baseline_path)
@@ -97,11 +103,17 @@ def score_trace_differential(
     bullet_streak = 0
     enemy_streak = 0
     laser_streak = 0
+    item_streak = 0
     score_streak = 0
+    power_streak = 0
+    point_item_streak = 0
     saw_bullet_drift = False
     saw_enemy_drift = False
     saw_laser_drift = False
+    saw_item_drift = False
     saw_score_drift = False
+    saw_power_drift = False
+    saw_point_item_drift = False
     saw_life_drift = False
     saw_bomb_drift = False
 
@@ -130,6 +142,13 @@ def score_trace_differential(
             findings.append(Finding("laser-count-drift", f"tick {tick_label} baseline={baseline_lasers} case={case_lasers}"))
             saw_laser_drift = True
 
+        baseline_items = _entity_count(baseline_record, "items")
+        case_items = _entity_count(case_record, "items")
+        item_streak = item_streak + 1 if abs(baseline_items - case_items) >= item_drift_threshold else 0
+        if item_streak >= sustained_window and not saw_item_drift:
+            findings.append(Finding("item-count-drift", f"tick {tick_label} baseline={baseline_items} case={case_items}"))
+            saw_item_drift = True
+
         baseline_score = baseline_record.get("score")
         case_score = case_record.get("score")
         if isinstance(baseline_score, int) and isinstance(case_score, int):
@@ -137,6 +156,31 @@ def score_trace_differential(
             if score_streak >= sustained_window and not saw_score_drift:
                 findings.append(Finding("score-drift", f"tick {tick_label} baseline={baseline_score} case={case_score}"))
                 saw_score_drift = True
+
+        baseline_power = baseline_record.get("power")
+        case_power = case_record.get("power")
+        if isinstance(baseline_power, int) and isinstance(case_power, int):
+            power_streak = power_streak + 1 if abs(baseline_power - case_power) >= power_drift_threshold else 0
+            if power_streak >= sustained_window and not saw_power_drift:
+                findings.append(Finding("power-drift", f"tick {tick_label} baseline={baseline_power} case={case_power}"))
+                saw_power_drift = True
+
+        baseline_point_items = baseline_record.get("point_items_stage")
+        case_point_items = case_record.get("point_items_stage")
+        if isinstance(baseline_point_items, int) and isinstance(case_point_items, int):
+            point_item_streak = (
+                point_item_streak + 1
+                if abs(baseline_point_items - case_point_items) >= point_item_drift_threshold
+                else 0
+            )
+            if point_item_streak >= sustained_window and not saw_point_item_drift:
+                findings.append(
+                    Finding(
+                        "point-item-drift",
+                        f"tick {tick_label} baseline={baseline_point_items} case={case_point_items}",
+                    )
+                )
+                saw_point_item_drift = True
 
         baseline_lives = baseline_record.get("lives")
         case_lives = case_record.get("lives")
