@@ -45,7 +45,10 @@ class _BitReader:
         for _ in range(max_bytes):
             value = self.read_bits(8)
             if value == 0:
-                return raw.decode("ascii")
+                try:
+                    return raw.decode("ascii")
+                except UnicodeDecodeError as exc:
+                    raise Pbg3Error("PBG3 filename is not valid ASCII") from exc
             raw.append(value)
         raise Pbg3Error("PBG3 filename exceeds its 256-byte field")
 
