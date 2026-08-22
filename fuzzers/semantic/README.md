@@ -21,6 +21,30 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.ecl_campaign \
   --limit 32
 ```
 
+Switch that entrypoint into a longer boss-oriented profile with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.ecl_campaign \
+  --profile boss \
+  --seed-ecl reference/corpus/ecl/original/ecldata6.ecl \
+  --limit 8
+```
+
+The `boss` profile promotes the longer `1800`-tick action stream, forces
+`--continue-after-hit`, widens the timeout, and defaults the mutant selection to
+boss/timer/script families such as `boss-timer-` and `time-set-`. Add repeated
+`--name-filter` flags to narrow further.
+
+Sweep those boss-oriented families across the playable retail seeds with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.boss_sweep \
+  --limit-per-seed 8
+```
+
+This sweep skips `ecldata7.ecl` by default because current headless Practice
+startup only supports stages `1..6`.
+
 Each case gets its own ignored artifact directory containing:
 
 - the loose-resource override payload;

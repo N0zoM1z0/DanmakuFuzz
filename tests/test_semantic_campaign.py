@@ -3,9 +3,18 @@ from pathlib import Path
 from danmakufuzz.ecl_ir.model import EclFile, EclSubroutine, RawInstruction
 from danmakufuzz.ecl_ir.mutators import generate_targeted_mutants
 from danmakufuzz.interestingness.rules import Finding
+from danmakufuzz.semantic.boss_sweep import practice_stage_supported
+from danmakufuzz.semantic.ecl_campaign import (
+    DEFAULT_BOSS_NAME_FILTERS,
+    LONG_ACTION_FILE,
+    classify_process_result,
+    filter_mutants_by_name,
+    infer_stage_from_ecl_name,
+    resolve_campaign_profile,
+)
 from danmakufuzz.semantic.minimize_case import TargetFinding, _ddmin_delete
+from danmakufuzz.semantic.payload_mutants import PayloadMutant
 from danmakufuzz.semantic.payload_mutants import generate_structural_mutants
-from danmakufuzz.semantic.ecl_campaign import classify_process_result, infer_stage_from_ecl_name
 
 
 def test_infer_stage_from_ecl_name() -> None:
@@ -26,6 +35,39 @@ def test_generate_structural_mutants_includes_empty_payload() -> None:
     mutants = generate_structural_mutants(b"\x01\x00\x00\x00" + b"\x00" * 28)
     assert mutants[0].name == "struct-empty-file"
     assert mutants[0].payload == b""
+
+
+def test_filter_mutants_by_multiple_name_filters() -> None:
+    mutants = [
+        PayloadMutant(name="boss-timer-zero", payload=b"", source="ir"),
+        PayloadMutant(name="move-time-zero", payload=b"", source="ir"),
+        PayloadMutant(name="time-set-zero", payload=b"", source="ir"),
+    ]
+    filtered = filter_mutants_by_name(mutants, ["boss-timer-", "time-set-"])
+    assert [mutant.name for mutant in filtered] == ["boss-timer-zero", "time-set-zero"]
+
+
+def test_resolve_campaign_profile_boss_defaults() -> None:
+    resolved = resolve_campaign_profile(
+        profile="boss",
+        action_file=Path("config/headless_baseline_actions.txt"),
+        max_ticks=600,
+        timeout_seconds=5.0,
+        continue_after_hit=False,
+        case_prefix="campaign",
+        name_filters=None,
+    )
+    assert resolved["action_file"] == LONG_ACTION_FILE
+    assert resolved["max_ticks"] == 1800
+    assert resolved["timeout_seconds"] == 15.0
+    assert resolved["continue_after_hit"] is True
+    assert resolved["case_prefix"] == "boss"
+    assert resolved["name_filters"] == list(DEFAULT_BOSS_NAME_FILTERS)
+
+
+def test_practice_stage_supported_skips_stage_seven() -> None:
+    assert practice_stage_supported(6) is True
+    assert practice_stage_supported(7) is False
 
 
 def test_target_finding_matches_kind_and_detail() -> None:

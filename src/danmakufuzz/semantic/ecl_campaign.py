@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 import json
 import os
 from pathlib import Path
@@ -11,11 +12,19 @@ import time
 
 from ..headless.baseline import DEFAULT_ACTION_FILE, DEFAULT_GAME_DIR, build_command, default_headless_binary, run_baseline
 from ..interestingness.rules import Finding, score_trace, score_trace_differential
-from ..repo import ARTIFACTS_DIR, REFERENCE_DIR, ensure_directory
+from ..repo import ARTIFACTS_DIR, CONFIG_DIR, REFERENCE_DIR, ensure_directory
 from .payload_mutants import PayloadMutant, generate_payload_mutants
 
 
 ECLDATA_RE = re.compile(r"ecldata(?P<stage>\d+)\.ecl$")
+LONG_ACTION_FILE = CONFIG_DIR / "headless_baseline_actions_1800.txt"
+DEFAULT_BOSS_NAME_FILTERS = (
+    "boss-timer-",
+    "life-callback-threshold-",
+    "timer-callback-threshold-",
+    "boss-life-count-",
+    "time-set-",
+)
 
 
 def infer_stage_from_ecl_name(path: Path) -> int:
@@ -27,6 +36,61 @@ def infer_stage_from_ecl_name(path: Path) -> int:
 
 def default_seed_ecl() -> Path:
     return REFERENCE_DIR / "corpus" / "ecl" / "original" / "ecldata6.ecl"
+
+
+def filter_mutants_by_name(mutants: list[PayloadMutant], name_filters: Sequence[str] | None) -> list[PayloadMutant]:
+    if not name_filters:
+        return list(mutants)
+    return [mutant for mutant in mutants if any(name_filter in mutant.name for name_filter in name_filters)]
+
+
+def select_mutants(
+    seed_payload: bytes,
+    *,
+    include_structural: bool = True,
+    name_filters: Sequence[str] | None = None,
+) -> list[PayloadMutant]:
+    mutants = generate_payload_mutants(seed_payload, include_structural=include_structural)
+    return filter_mutants_by_name(mutants, name_filters)
+
+
+def resolve_campaign_profile(
+    *,
+    profile: str,
+    action_file: Path,
+    max_ticks: int,
+    timeout_seconds: float,
+    continue_after_hit: bool,
+    case_prefix: str,
+    name_filters: Sequence[str] | None,
+) -> dict[str, object]:
+    resolved_filters = list(name_filters) if name_filters else []
+    resolved_action_file = action_file.resolve()
+    resolved_max_ticks = max_ticks
+    resolved_timeout = timeout_seconds
+    resolved_continue_after_hit = continue_after_hit
+    resolved_case_prefix = case_prefix
+    if profile == "boss":
+        if resolved_action_file == DEFAULT_ACTION_FILE.resolve():
+            resolved_action_file = LONG_ACTION_FILE
+        if resolved_max_ticks == 600:
+            resolved_max_ticks = 1800
+        if resolved_timeout == 5.0:
+            resolved_timeout = 15.0
+        resolved_continue_after_hit = True
+        if resolved_case_prefix == "campaign":
+            resolved_case_prefix = "boss"
+        if not resolved_filters:
+            resolved_filters = list(DEFAULT_BOSS_NAME_FILTERS)
+    return {
+        "profile": profile,
+        "action_file": resolved_action_file,
+        "max_ticks": resolved_max_ticks,
+        "timeout_seconds": resolved_timeout,
+        "continue_after_hit": resolved_continue_after_hit,
+        "case_prefix": resolved_case_prefix,
+        "name_filters": resolved_filters,
+    }
 
 
 def slugify_case_name(mutant: PayloadMutant, case_index: int) -> str:
@@ -176,8 +240,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--shot-type", type=int, default=0)
     parser.add_argument("--max-ticks", type=int, default=600)
     parser.add_argument("--timeout-seconds", type=float, default=5.0)
+    parser.add_argument("--profile", choices=("default", "boss"), default="default")
     parser.add_argument("--limit", type=int)
-    parser.add_argument("--name-filter", type=str)
+    parser.add_argument("--name-filter", action="append")
     parser.add_argument("--case-prefix", type=str, default="campaign")
     parser.add_argument("--no-structural", action="store_true")
     parser.add_argument("--auto-shoot", dest="auto_shoot", action="store_true")
@@ -193,8 +258,17 @@ def main() -> int:
     if not seed_ecl.is_file():
         raise FileNotFoundError(f"missing seed ECL: {seed_ecl}")
     stage = args.stage if args.stage is not None else infer_stage_from_ecl_name(seed_ecl)
+    profile = resolve_campaign_profile(
+        profile=args.profile,
+        action_file=args.actions.resolve(),
+        max_ticks=args.max_ticks,
+        timeout_seconds=args.timeout_seconds,
+        continue_after_hit=args.continue_after_hit,
+        case_prefix=args.case_prefix,
+        name_filters=args.name_filter,
+    )
     artifact_dir = args.artifact_dir or (
-        ARTIFACTS_DIR / "semantic" / f"{args.case_prefix}-stage{stage}-seed{args.seed}-{seed_ecl.stem}"
+        ARTIFACTS_DIR / "semantic" / f"{profile['case_prefix']}-stage{stage}-seed{args.seed}-{seed_ecl.stem}"
     )
     ensure_directory(artifact_dir)
     baseline_artifact_dir = artifact_dir / "_baseline"
@@ -204,23 +278,25 @@ def main() -> int:
         resource_override_dir=None,
         stage=stage,
         seed=args.seed,
-        action_file=args.actions.resolve(),
+        action_file=profile["action_file"],
         artifact_dir=baseline_artifact_dir.resolve(),
         difficulty=args.difficulty,
         character=args.character,
         shot_type=args.shot_type,
-        max_ticks=args.max_ticks,
+        max_ticks=profile["max_ticks"],
         auto_shoot=args.auto_shoot,
-        continue_after_hit=args.continue_after_hit,
+        continue_after_hit=profile["continue_after_hit"],
         dry_run=False,
     )
     baseline_trace_value = baseline_metadata.get("trace")
     baseline_trace = Path(baseline_trace_value) if isinstance(baseline_trace_value, str) else None
 
     seed_payload = seed_ecl.read_bytes()
-    mutants = generate_payload_mutants(seed_payload, include_structural=not args.no_structural)
-    if args.name_filter:
-        mutants = [mutant for mutant in mutants if args.name_filter in mutant.name]
+    mutants = select_mutants(
+        seed_payload,
+        include_structural=not args.no_structural,
+        name_filters=profile["name_filters"],
+    )
     if args.limit is not None:
         mutants = mutants[:args.limit]
 
@@ -233,14 +309,14 @@ def main() -> int:
                 game_dir=args.game_dir.resolve(),
                 stage=stage,
                 seed=args.seed,
-                action_file=args.actions.resolve(),
+                action_file=profile["action_file"],
                 difficulty=args.difficulty,
                 character=args.character,
                 shot_type=args.shot_type,
-                max_ticks=args.max_ticks,
+                max_ticks=profile["max_ticks"],
                 auto_shoot=args.auto_shoot,
-                continue_after_hit=args.continue_after_hit,
-                timeout_seconds=args.timeout_seconds,
+                continue_after_hit=profile["continue_after_hit"],
+                timeout_seconds=profile["timeout_seconds"],
                 campaign_dir=artifact_dir.resolve(),
                 seed_name=seed_ecl.name,
                 mutant=mutant,
@@ -265,6 +341,11 @@ def main() -> int:
     campaign_result = {
         "seed_ecl": str(seed_ecl),
         "stage": stage,
+        "profile": profile["profile"],
+        "name_filters": profile["name_filters"],
+        "actions": str(profile["action_file"]),
+        "max_ticks": profile["max_ticks"],
+        "continue_after_hit": profile["continue_after_hit"],
         "mutants_generated": len(mutants),
         "cases_run": totals["cases"],
         "interesting_cases": totals["interesting"],
