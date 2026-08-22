@@ -37,6 +37,17 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.minimize_case \
   --result artifacts/semantic/.../result.json
 ```
 
+Cluster interesting semantic cases before minimization or retail replay with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.cluster_cases \
+  --from-artifacts
+```
+
+The cluster summary groups cases by primary headless finding plus mutant name,
+adds a wider finding/source family view, and annotates which source cases
+already have minimized summaries for easier retail handoff.
+
 Prepare or launch an isolated retail confirmation worker from either a
 semantic case or a minimized case with:
 
