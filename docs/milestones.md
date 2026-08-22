@@ -26,7 +26,9 @@ signals such as the zero-byte `ecldata6.ecl` `SIGSEGV` case. The parser lane
 now also has standalone PBG3, replay, and stage `.std` entrypoints for
 independent format validation. The semantic lane now also has a lightweight
 clustering entrypoint that groups interesting cases into reviewable clusters and
-finding/source families before minimization or retail replay. Retail handoff now has an isolated preparation
+finding/source families before minimization or retail replay, plus a thin batch
+minimization wrapper that can execute only the still-missing representative
+handoff cases. Retail handoff now has an isolated preparation
 runner that can rebuild `紅魔郷ST.DAT`/`峠杺嫿ST.DAT`, initialize a dedicated
 Wine prefix, normalize the retail cfg for Xvfb, restore the local full-unlock
 `score.dat`, and drive Reimu A Practice Stage 1--6 from either semantic

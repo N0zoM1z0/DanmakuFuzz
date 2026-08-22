@@ -48,6 +48,17 @@ The cluster summary groups cases by primary headless finding plus mutant name,
 adds a wider finding/source family view, and annotates which source cases
 already have minimized summaries for easier retail handoff.
 
+Turn that cluster summary into a batch minimization queue with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.batch_minimize \
+  --cluster-summary artifacts/semantic-clusters/.../summary.json \
+  --only-missing
+```
+
+This wrapper skips cluster representatives that already have a minimized summary
+and only runs `semantic.minimize_case` on the missing handoff candidates.
+
 Prepare or launch an isolated retail confirmation worker from either a
 semantic case or a minimized case with:
 
