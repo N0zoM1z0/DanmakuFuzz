@@ -19,7 +19,13 @@ from ..interestingness.rules import (
     suppress_baseline_stall_findings_records,
 )
 from ..repo import ARTIFACTS_DIR, CONFIG_DIR, REFERENCE_DIR, ensure_directory
-from .payload_mutants import PayloadMutant, generate_payload_mutants
+from .payload_mutants import (
+    PayloadMutant,
+    generate_ir_mutants,
+    generate_payload_mutants,
+    generate_structural_mutants,
+    materialize_ir_mutant,
+)
 
 
 ECLDATA_RE = re.compile(r"ecldata(?P<stage>\d+)\.ecl$")
@@ -72,7 +78,36 @@ def select_mutants(
     mutation_mode: str = "deterministic",
     random_seed: int = 0,
     samples_per_site: int = 4,
+    limit: int | None = None,
+    family_filters: Sequence[str] | None = None,
+    selection_mode: str = "family",
 ) -> list[PayloadMutant]:
+    if limit is not None:
+        candidates: list[object] = []
+        if include_structural:
+            candidates.extend(generate_structural_mutants(seed_payload))
+        ir_mutants = generate_ir_mutants(
+            seed_payload,
+            mutation_mode=mutation_mode,
+            random_seed=random_seed,
+            samples_per_site=samples_per_site,
+        )
+        candidates.extend(ir_mutants)
+        filtered_candidates = filter_mutants_by_name(candidates, name_filters)
+        selected_candidates = select_diverse_mutants(
+            filtered_candidates,
+            limit=limit,
+            family_filters=family_filters or name_filters,
+            selection_mode=selection_mode,
+        )
+        selected: list[PayloadMutant] = []
+        for mutant in selected_candidates:
+            if isinstance(mutant, PayloadMutant):
+                selected.append(mutant)
+            else:
+                selected.append(materialize_ir_mutant(mutant))
+        return selected
+
     mutants = generate_payload_mutants(
         seed_payload,
         include_structural=include_structural,
@@ -448,9 +483,6 @@ def main() -> int:
         mutation_mode=args.mutation_mode,
         random_seed=args.random_seed,
         samples_per_site=args.samples_per_site,
-    )
-    mutants = select_diverse_mutants(
-        mutants,
         limit=args.limit,
         family_filters=profile["name_filters"],
         selection_mode=resolved_selection_mode,

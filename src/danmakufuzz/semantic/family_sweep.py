@@ -14,7 +14,6 @@ from .ecl_campaign import (
     resolve_campaign_profile,
     resolve_selection_mode,
     run_case,
-    select_diverse_mutants,
     select_mutants,
 )
 
@@ -167,9 +166,6 @@ def main() -> int:
             mutation_mode=args.mutation_mode,
             random_seed=args.random_seed,
             samples_per_site=args.samples_per_site,
-        )
-        mutants = select_diverse_mutants(
-            mutants,
             limit=args.limit_per_seed,
             family_filters=profile["name_filters"],
             selection_mode=resolved_selection_mode,
