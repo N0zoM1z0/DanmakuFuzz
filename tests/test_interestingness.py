@@ -6,6 +6,7 @@ from danmakufuzz.interestingness.rules import (
     first_stall_event,
     score_trace,
     score_trace_differential,
+    score_trace_path_with_baseline,
     suppress_baseline_stall_findings,
 )
 
@@ -201,6 +202,42 @@ def test_score_trace_differential_flags_shortfall(tmp_path: Path) -> None:
     case.write_text("\n".join(json.dumps(row) for row in case_rows) + "\n", encoding="utf-8")
     findings = score_trace_differential(case, baseline, shortfall_threshold=4)
     assert any(finding.kind == "trace-shortfall" for finding in findings)
+
+
+def test_score_trace_differential_flags_terminal_reason_drift(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.jsonl"
+    case = tmp_path / "case.jsonl"
+    baseline_rows = [
+        {"tick": 1, "terminal_reason": None, "bullets": [], "lasers": [], "enemies": [], "score": 0, "lives": 2, "bombs": 3},
+        {"tick": 2, "terminal_reason": None, "bullets": [], "lasers": [], "enemies": [], "score": 0, "lives": 2, "bombs": 3},
+        {"tick": 311, "terminal_reason": "physical-hit", "bullets": [], "lasers": [], "enemies": [], "score": 2450, "lives": 1, "bombs": 3},
+    ]
+    case_rows = [
+        {"tick": 1, "terminal_reason": None, "bullets": [], "lasers": [], "enemies": [], "score": 0, "lives": 2, "bombs": 3},
+        {"tick": 2, "terminal_reason": None, "bullets": [], "lasers": [], "enemies": [], "score": 0, "lives": 2, "bombs": 3},
+        {"tick": 600, "terminal_reason": "tick-limit", "bullets": [], "lasers": [], "enemies": [], "score": 5860, "lives": 2, "bombs": 3},
+    ]
+    baseline.write_text("\n".join(json.dumps(row) for row in baseline_rows) + "\n", encoding="utf-8")
+    case.write_text("\n".join(json.dumps(row) for row in case_rows) + "\n", encoding="utf-8")
+    findings = score_trace_differential(case, baseline)
+    assert any(finding.kind == "terminal-reason-drift" for finding in findings)
+
+
+def test_score_trace_path_with_baseline_flags_terminal_reason_drift(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.jsonl"
+    case = tmp_path / "case.jsonl"
+    baseline_rows = [
+        {"tick": 1, "terminal_reason": None, "bullets": [], "lasers": [], "enemies": [], "score": 0, "lives": 2, "bombs": 3},
+        {"tick": 311, "terminal_reason": "physical-hit", "bullets": [], "lasers": [], "enemies": [], "score": 2450, "lives": 1, "bombs": 3},
+    ]
+    case_rows = [
+        {"tick": 1, "terminal_reason": None, "bullets": [], "lasers": [], "enemies": [], "score": 0, "lives": 2, "bombs": 3},
+        {"tick": 600, "terminal_reason": "tick-limit", "bullets": [], "lasers": [], "enemies": [], "score": 5860, "lives": 2, "bombs": 3},
+    ]
+    baseline.write_text("\n".join(json.dumps(row) for row in baseline_rows) + "\n", encoding="utf-8")
+    case.write_text("\n".join(json.dumps(row) for row in case_rows) + "\n", encoding="utf-8")
+    findings = score_trace_path_with_baseline(case, baseline_records=baseline_rows)
+    assert any(finding.kind == "terminal-reason-drift" for finding in findings)
 
 
 def test_score_trace_differential_flags_item_drift(tmp_path: Path) -> None:

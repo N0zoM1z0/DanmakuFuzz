@@ -387,6 +387,35 @@ def _should_keep_stall_findings(
     return False
 
 
+def _terminal_reason_drift_finding(
+    *,
+    baseline_records: list[dict[str, Any]],
+    case_last_record: dict[str, Any] | None,
+) -> Finding | None:
+    if not baseline_records or case_last_record is None:
+        return None
+    baseline_last_record = baseline_records[-1]
+    baseline_reason = baseline_last_record.get("terminal_reason")
+    case_reason = case_last_record.get("terminal_reason")
+    if baseline_reason == case_reason:
+        return None
+    if baseline_reason is None and case_reason is None:
+        return None
+    baseline_tick = baseline_last_record.get("tick")
+    case_tick = case_last_record.get("tick")
+    return Finding(
+        "terminal-reason-drift",
+        " ".join(
+            [
+                f"baseline={baseline_reason}",
+                f"case={case_reason}",
+                f"baseline_tick={baseline_tick}",
+                f"case_tick={case_tick}",
+            ]
+        ),
+    )
+
+
 def score_trace_path_with_baseline(
     path: Path,
     *,
@@ -672,6 +701,17 @@ def score_trace_path_with_baseline(
                 Finding("trace-shortfall", f"tick_count={record_count} baseline_tick_count={baseline_length}")
             )
 
+    terminal_reason_drift = (
+        _terminal_reason_drift_finding(
+            baseline_records=baseline_records,
+            case_last_record=last_record,
+        )
+        if baseline_records is not None
+        else None
+    )
+    if terminal_reason_drift is not None:
+        differential_findings.append(terminal_reason_drift)
+
     return standalone_findings + differential_findings
 
 
@@ -922,6 +962,13 @@ def score_trace_differential_records(
         terminal_reason = case_records[-1].get("terminal_reason")
         if terminal_reason is None:
             findings.append(Finding("trace-shortfall", f"tick_count={len(case_records)} baseline_tick_count={len(baseline_records)}"))
+
+    terminal_reason_drift = _terminal_reason_drift_finding(
+        baseline_records=baseline_records,
+        case_last_record=case_records[-1] if case_records else None,
+    )
+    if terminal_reason_drift is not None:
+        findings.append(terminal_reason_drift)
 
     return findings
 
