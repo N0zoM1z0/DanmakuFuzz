@@ -32,10 +32,32 @@ Why this matters:
 - it shows that the ANM lane can preserve enough trace to classify pre-crash
   drift instead of only reporting a hard process failure.
 
+Current basin clustering:
+
+- `first-script-id-ffff`, `first-script-offset-zero`, and
+  `first-instr-opcode-255` are one clean crash sub-basin:
+  they produce the same trace hash, the same `128`-line partial trace, and no
+  observable divergence before the crash cutoff itself;
+- `first-sprite-offset-zero` is a sibling sub-basin:
+  it diverges immediately because ANM load state already drifts, but it still
+  lands in the same `SIGSEGV + 128-line partial trace` sink.
+
+That narrows the apparent root cause from “four unrelated weird mutants” down
+to a smaller statement:
+
+- one likely script-dispatch / first-script corruption sink;
+- one sprite-table corruption path that still converges into that same sink.
+
 Reproduce it with:
 
 ```sh
 PYTHONPATH=src python3 findings/runtime/anm-stage1enm-runtime-sigsegv-basin/reproduce.py
+```
+
+Cluster the reproduced cases with:
+
+```sh
+PYTHONPATH=src python3 findings/runtime/anm-stage1enm-runtime-sigsegv-basin/analyze_clusters.py
 ```
 
 Payload selection is recorded in:

@@ -143,8 +143,9 @@ PYTHONPATH=src python3 -m danmakufuzz.parser.anm_runtime_campaign
 
 By default this lane:
 
-- auto-selects archive entries matching `stgXbg.anm` and `stgXenm.anm`;
-- skips unsupported Practice stages outside `1..6`;
+- auto-selects archive entries matching `stgXbg.anm`, `stgXenm.anm`, and
+  `stgXenm2.anm`;
+- includes Extra stage seeds when headless Practice supports them;
 - reuses one headless baseline trace per stage instead of rerunning the same
   baseline for every entry;
 - focuses the initial mutant budget on four source-less ANM sites that already

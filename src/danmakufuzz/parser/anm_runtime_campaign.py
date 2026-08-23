@@ -30,7 +30,7 @@ from .anm_campaign import evaluate_anm_payload
 from .anm_mutants import AnmMutant, generate_anm_mutants
 
 
-ENTRY_STAGE_RE = re.compile(r"^stg(?P<stage>\d+)(?P<kind>bg|enm)\.anm$", re.IGNORECASE)
+ENTRY_STAGE_RE = re.compile(r"^stg(?P<stage>\d+)(?P<kind>bg|enm(?:\d+)?)\.anm$", re.IGNORECASE)
 DEFAULT_TARGET_KINDS = (
     "anm-script-drift",
     "anm-non-finite",
@@ -72,7 +72,7 @@ def _slug_entry_name(entry_name: str) -> str:
 
 
 def practice_stage_supported(stage: int) -> bool:
-    return 1 <= stage <= 6
+    return 1 <= stage <= 7
 
 
 def _parse_entry_stage_override(raw: str) -> tuple[str, int]:
@@ -103,7 +103,13 @@ def _entry_sort_key(entry_name: str, stage: int) -> tuple[int, int, str]:
     match = ENTRY_STAGE_RE.fullmatch(entry_name)
     kind_order = 9
     if match is not None:
-        kind_order = 0 if match.group("kind").lower() == "bg" else 1
+        kind = match.group("kind").lower()
+        if kind == "bg":
+            kind_order = 0
+        elif kind == "enm":
+            kind_order = 1
+        else:
+            kind_order = 2
     return stage, kind_order, entry_name
 
 
@@ -148,7 +154,7 @@ def _select_entry_names(
         selected.append((entry.filename, stage))
 
     if not selected:
-        raise RuntimeError("no ANM runtime entries matched the default stgXbg/stgXenm selector")
+        raise RuntimeError("no ANM runtime entries matched the default stgXbg/stgXenm/stgXenm2 selector")
     return sorted(selected, key=lambda item: _entry_sort_key(item[0], item[1])), skipped
 
 
@@ -441,7 +447,7 @@ def _run_runtime_case(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run a stage-entry ANM runtime campaign over stgXbg/stgXenm archive seeds."
+        description="Run a stage-entry ANM runtime campaign over stgXbg/stgXenm/stgXenm2 archive seeds."
     )
     parser.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
     parser.add_argument("--entry", action="append")
