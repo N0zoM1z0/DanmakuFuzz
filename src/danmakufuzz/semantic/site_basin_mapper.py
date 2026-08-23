@@ -205,22 +205,35 @@ def _exact_mutant(
         raise RuntimeError(
             f"opcode drifted at ({sub_index}, {instruction_index}): expected {expected_opcode}, got {instruction.opcode}"
         )
-    if field_offset < 0 or field_offset + 4 > len(instruction.args):
+    if field_offset == -1:
+        if field_name != "time":
+            raise RuntimeError(
+                f"field offset -1 only supports instruction.time, got field_name={field_name!r} "
+                f"at ({sub_index}, {instruction_index})"
+            )
+        original_value = int(instruction.time)
+        if expected_original_value is not None and original_value != expected_original_value:
+            raise RuntimeError(
+                f"original time drifted at ({sub_index}, {instruction_index}): "
+                f"expected {expected_original_value}, got {original_value}"
+            )
+        instruction.time = int(value)
+    elif field_offset < 0 or field_offset + 4 > len(instruction.args):
         raise RuntimeError(
             f"field offset {field_offset} is outside instruction args length {len(instruction.args)} "
             f"at ({sub_index}, {instruction_index})"
         )
-    original_value = int.from_bytes(instruction.args[field_offset:field_offset + 4], "little", signed=True)
-    if expected_original_value is not None and original_value != expected_original_value:
-        raise RuntimeError(
-            f"original value drifted at ({sub_index}, {instruction_index}) offset {field_offset}: "
-            f"expected {expected_original_value}, got {original_value}"
+        original_value = int.from_bytes(instruction.args[field_offset:field_offset + 4], "little", signed=True)
+        if expected_original_value is not None and original_value != expected_original_value:
+            raise RuntimeError(
+                f"original value drifted at ({sub_index}, {instruction_index}) offset {field_offset}: "
+                f"expected {expected_original_value}, got {original_value}"
+            )
+        instruction.args = (
+            instruction.args[:field_offset]
+            + int(value).to_bytes(4, "little", signed=True)
+            + instruction.args[field_offset + 4:]
         )
-    instruction.args = (
-        instruction.args[:field_offset]
-        + int(value).to_bytes(4, "little", signed=True)
-        + instruction.args[field_offset + 4:]
-    )
     payload = serialize_ecl(ecl)
     mutant = PayloadMutant(
         name=f"{family}-exact-{value}",

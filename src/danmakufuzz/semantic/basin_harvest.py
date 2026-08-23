@@ -31,7 +31,13 @@ def _metadata_field_offset(data: dict[str, object]) -> int | None:
     if not isinstance(metadata, dict):
         return None
     value = metadata.get("arg_offset")
-    return value if isinstance(value, int) else None
+    if isinstance(value, int):
+        return value
+    strategy = metadata.get("strategy")
+    field_name = metadata.get("field_name")
+    if strategy == "sampled-instruction-i32" and field_name == "time":
+        return -1
+    return None
 
 
 def _metadata_field_name(data: dict[str, object]) -> str | None:
@@ -257,6 +263,9 @@ def _load_seed_site(
         raise FileNotFoundError(f"missing seed corpus entry: {seed_ecl}")
     ecl = parse_ecl(seed_ecl.read_bytes())
     instruction = ecl.subs[sub_index].instructions[instruction_index]
+    if field_offset == -1:
+        original_value = int(instruction.time)
+        return seed_ecl, int(instruction.opcode), original_value
     if field_offset < 0 or field_offset + 4 > len(instruction.args):
         raise RuntimeError(
             f"field offset {field_offset} is outside instruction args length {len(instruction.args)} "
