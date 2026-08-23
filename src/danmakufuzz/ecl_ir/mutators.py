@@ -635,6 +635,237 @@ def _random_signed_bits(rng: random.Random, bit_width: int) -> int:
     return -value if rng.getrandbits(1) else value
 
 
+def _coerce_signed(value: int, *, bit_width: int) -> int:
+    mask = (1 << bit_width) - 1
+    coerced = int(value) & mask
+    sign_bit = 1 << (bit_width - 1)
+    if coerced & sign_bit:
+        coerced -= 1 << bit_width
+    return coerced
+
+
+def _coerce_i32(value: int) -> int:
+    return _coerce_signed(value, bit_width=32)
+
+
+def _coerce_i16(value: int) -> int:
+    return _coerce_signed(value, bit_width=16)
+
+
+def _rotate_signed(value: int, *, shift: int, bit_width: int) -> int:
+    mask = (1 << bit_width) - 1
+    unsigned = int(value) & mask
+    normalized_shift = shift % bit_width
+    if normalized_shift == 0:
+        return _coerce_signed(unsigned, bit_width=bit_width)
+    rotated = ((unsigned << normalized_shift) | (unsigned >> (bit_width - normalized_shift))) & mask
+    return _coerce_signed(rotated, bit_width=bit_width)
+
+
+def _repeat_byte_pattern(byte_value: int, *, width_bytes: int) -> int:
+    return _coerce_signed(
+        int.from_bytes(bytes([byte_value & 0xFF]) * width_bytes, "little", signed=False),
+        bit_width=width_bytes * 8,
+    )
+
+
+def _reverse_signed_bytes(value: int, *, width_bytes: int) -> int:
+    bit_width = width_bytes * 8
+    mask = (1 << bit_width) - 1
+    data = (int(value) & mask).to_bytes(width_bytes, "little", signed=False)
+    reversed_data = data[::-1]
+    return _coerce_signed(int.from_bytes(reversed_data, "little", signed=False), bit_width=bit_width)
+
+
+def _swap_i32_halves(value: int) -> int:
+    unsigned = int(value) & 0xFFFFFFFF
+    swapped = ((unsigned & 0xFFFF) << 16) | ((unsigned >> 16) & 0xFFFF)
+    return _coerce_i32(swapped)
+
+
+def _byte_pattern_values(current: int, *, width_bytes: int) -> list[int]:
+    bit_width = width_bytes * 8
+    mask = (1 << bit_width) - 1
+    data = (int(current) & mask).to_bytes(width_bytes, "little", signed=False)
+    byte_pool = {0x00, 0x01, 0x7F, 0x80, 0xFF, *data}
+    return [
+        _repeat_byte_pattern(byte_value, width_bytes=width_bytes)
+        for byte_value in sorted(byte_pool)
+    ]
+
+
+def _havoc_signed_i32(current: int, *, rng: random.Random, count: int) -> list[int]:
+    if count <= 0:
+        return []
+
+    delta_pool = (-0x10000, -0x1000, -0x100, -0x40, -0x10, -4, -1, 1, 4, 0x10, 0x40, 0x100, 0x1000, 0x10000)
+    multiplier_pool = (-8, -4, -2, 2, 4, 8, 16)
+    shift_pool = (1, 3, 7, 8, 11, 15, 16, 23, 24, 31)
+    mask_pool = (
+        0x000000FF,
+        0x0000FFFF,
+        0x00FF00FF,
+        0x0F0F0F0F,
+        0x33333333,
+        0x55555555,
+        0xAAAAAAAA,
+        0xCCCCCCCC,
+        0xF0F0F0F0,
+        0xFF00FF00,
+        0x7FFFFFFF,
+        0x80000000,
+        0xFFFFFFFF,
+    )
+    extreme_pool = (
+        -(1 << 31),
+        -(1 << 31) + 1,
+        -0x1000000,
+        -0x10000,
+        -0x100,
+        -1,
+        0,
+        1,
+        0xFF,
+        0x100,
+        0x10000,
+        (1 << 31) - 2,
+        (1 << 31) - 1,
+    )
+    current_bytes = list((int(current) & 0xFFFFFFFF).to_bytes(4, "little", signed=False))
+    seed_pool = [
+        _coerce_i32(current),
+        _coerce_i32(~current),
+        _reverse_signed_bytes(current, width_bytes=4),
+        _swap_i32_halves(current),
+        _coerce_i32(rng.getrandbits(32)),
+        _coerce_i32(rng.getrandbits(32) ^ (int(current) & 0xFFFFFFFF)),
+        _repeat_byte_pattern(current_bytes[0], width_bytes=4),
+        rng.choice(extreme_pool),
+    ]
+    values: list[int] = []
+    for _ in range(max(8, count)):
+        value = seed_pool[rng.randrange(len(seed_pool))]
+        step_count = 1 + rng.randrange(4)
+        for _ in range(step_count):
+            operation = rng.choice((
+                "add",
+                "mul",
+                "xor",
+                "rotate",
+                "mask",
+                "byte-set",
+                "byte-shuffle",
+                "negate",
+                "extreme",
+            ))
+            if operation == "add":
+                delta = rng.choice(delta_pool) * rng.choice((1, 2, 4, 8, 16, 64))
+                value = _coerce_i32(value + delta)
+            elif operation == "mul":
+                value = _coerce_i32(value * rng.choice(multiplier_pool))
+            elif operation == "xor":
+                value = _coerce_i32((value & 0xFFFFFFFF) ^ rng.choice(mask_pool))
+            elif operation == "rotate":
+                shift = rng.choice(shift_pool)
+                if rng.getrandbits(1):
+                    value = _rotate_signed(value, shift=shift, bit_width=32)
+                else:
+                    value = _rotate_signed(value, shift=32 - shift, bit_width=32)
+            elif operation == "mask":
+                mask = rng.choice(mask_pool)
+                if rng.getrandbits(1):
+                    value = _coerce_i32((value & 0xFFFFFFFF) & mask)
+                else:
+                    value = _coerce_i32((value & 0xFFFFFFFF) | mask)
+            elif operation == "byte-set":
+                data = bytearray((value & 0xFFFFFFFF).to_bytes(4, "little", signed=False))
+                byte_index = rng.randrange(4)
+                if rng.getrandbits(1):
+                    data[byte_index] = rng.randrange(256)
+                else:
+                    data[byte_index] = current_bytes[rng.randrange(len(current_bytes))]
+                value = _coerce_i32(int.from_bytes(data, "little", signed=False))
+            elif operation == "byte-shuffle":
+                data = bytearray((value & 0xFFFFFFFF).to_bytes(4, "little", signed=False))
+                if rng.getrandbits(1):
+                    data.reverse()
+                else:
+                    data = data[2:4] + data[0:2]
+                value = _coerce_i32(int.from_bytes(data, "little", signed=False))
+            elif operation == "negate":
+                value = _coerce_i32(-value if rng.getrandbits(1) else ~value)
+            else:
+                edge = rng.choice(extreme_pool)
+                value = _coerce_i32(edge + rng.choice((-7, -3, -1, 0, 1, 3, 7)))
+        values.append(_coerce_i32(value))
+    return values
+
+
+def _havoc_signed_i16(current: int, *, rng: random.Random, count: int) -> list[int]:
+    if count <= 0:
+        return []
+
+    delta_pool = (-0x100, -0x40, -0x10, -4, -1, 1, 4, 0x10, 0x40, 0x100)
+    multiplier_pool = (-8, -4, -2, 2, 4, 8)
+    shift_pool = (1, 3, 7, 8, 11, 15)
+    mask_pool = (0x00FF, 0x0F0F, 0x3333, 0x5555, 0xAAAA, 0xF0F0, 0xFF00, 0x7FFF, 0x8000, 0xFFFF)
+    extreme_pool = (-(1 << 15), -(1 << 15) + 1, -0x100, -1, 0, 1, 0x7F, 0x80, 0xFF, (1 << 15) - 2, (1 << 15) - 1)
+    current_bytes = list((int(current) & 0xFFFF).to_bytes(2, "little", signed=False))
+    seed_pool = [
+        _coerce_i16(current),
+        _coerce_i16(~current),
+        _reverse_signed_bytes(current, width_bytes=2),
+        _coerce_i16(rng.getrandbits(16)),
+        _coerce_i16(rng.getrandbits(16) ^ (int(current) & 0xFFFF)),
+        _repeat_byte_pattern(current_bytes[0], width_bytes=2),
+        rng.choice(extreme_pool),
+    ]
+    values: list[int] = []
+    for _ in range(max(6, count)):
+        value = seed_pool[rng.randrange(len(seed_pool))]
+        step_count = 1 + rng.randrange(3)
+        for _ in range(step_count):
+            operation = rng.choice(("add", "mul", "xor", "rotate", "mask", "byte-set", "byte-shuffle", "negate", "extreme"))
+            if operation == "add":
+                delta = rng.choice(delta_pool) * rng.choice((1, 2, 4, 8, 16))
+                value = _coerce_i16(value + delta)
+            elif operation == "mul":
+                value = _coerce_i16(value * rng.choice(multiplier_pool))
+            elif operation == "xor":
+                value = _coerce_i16((value & 0xFFFF) ^ rng.choice(mask_pool))
+            elif operation == "rotate":
+                shift = rng.choice(shift_pool)
+                if rng.getrandbits(1):
+                    value = _rotate_signed(value, shift=shift, bit_width=16)
+                else:
+                    value = _rotate_signed(value, shift=16 - shift, bit_width=16)
+            elif operation == "mask":
+                mask = rng.choice(mask_pool)
+                if rng.getrandbits(1):
+                    value = _coerce_i16((value & 0xFFFF) & mask)
+                else:
+                    value = _coerce_i16((value & 0xFFFF) | mask)
+            elif operation == "byte-set":
+                data = bytearray((value & 0xFFFF).to_bytes(2, "little", signed=False))
+                byte_index = rng.randrange(2)
+                if rng.getrandbits(1):
+                    data[byte_index] = rng.randrange(256)
+                else:
+                    data[byte_index] = current_bytes[rng.randrange(len(current_bytes))]
+                value = _coerce_i16(int.from_bytes(data, "little", signed=False))
+            elif operation == "byte-shuffle":
+                data = bytearray((value & 0xFFFF).to_bytes(2, "little", signed=False))
+                data.reverse()
+                value = _coerce_i16(int.from_bytes(data, "little", signed=False))
+            elif operation == "negate":
+                value = _coerce_i16(-value if rng.getrandbits(1) else ~value)
+            else:
+                edge = rng.choice(extreme_pool)
+                value = _coerce_i16(edge + rng.choice((-3, -1, 0, 1, 3)))
+        values.append(_coerce_i16(value))
+    return values
+
+
 def _sample_u8(
     *,
     current: int,
@@ -899,6 +1130,15 @@ def _sample_signed_i32(
         -(1 << 31) + rng.randint(0, 255),
     ]
     mirrored_values = [current, -current, current - 1, current + 1, -current - 1, -current + 1]
+    byte_pattern_values = _byte_pattern_values(current, width_bytes=4)
+    structured_values = [
+        _reverse_signed_bytes(current, width_bytes=4),
+        _swap_i32_halves(current),
+        _coerce_i32(~current),
+        _rotate_signed(current, shift=8, bit_width=32),
+        _rotate_signed(current, shift=16, bit_width=32),
+    ]
+    havoc_values = _havoc_signed_i32(current, rng=rng, count=max(8, budget * 4))
     context_values: list[int] = []
     if context_limit is not None and context_limit >= 0:
         upper = max(context_limit + 4, 4)
@@ -922,9 +1162,12 @@ def _sample_signed_i32(
             power_values,
             magnitude_values,
             mirrored_values,
+            byte_pattern_values,
+            structured_values,
             random_local_values,
             random_stride_values,
             random_extreme_values,
+            havoc_values,
         ],
         current=current,
         minimum=-(1 << 31),
@@ -1022,6 +1265,13 @@ def _sample_signed_i16(
         -(1 << 15) + rng.randint(0, 63),
     ]
     mirrored_values = [current, -current, current - 1, current + 1, -current - 1, -current + 1]
+    byte_pattern_values = _byte_pattern_values(current, width_bytes=2)
+    structured_values = [
+        _reverse_signed_bytes(current, width_bytes=2),
+        _coerce_i16(~current),
+        _rotate_signed(current, shift=8, bit_width=16),
+    ]
+    havoc_values = _havoc_signed_i16(current, rng=rng, count=max(6, budget * 4))
     return _sample_value_groups(
         [
             list(base),
@@ -1031,9 +1281,12 @@ def _sample_signed_i16(
             power_values,
             magnitude_values,
             mirrored_values,
+            byte_pattern_values,
+            structured_values,
             random_local_values,
             random_stride_values,
             random_extreme_values,
+            havoc_values,
         ],
         current=current,
         minimum=-(1 << 15),
