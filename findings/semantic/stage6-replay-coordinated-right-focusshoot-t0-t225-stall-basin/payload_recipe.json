@@ -1,0 +1,28 @@
+{
+  "finding": "semantic/stage6-replay-coordinated-right-focusshoot-t0-t225-stall-basin",
+  "stage": 6,
+  "seed": 7,
+  "difficulty": 3,
+  "character": 0,
+  "shot_type": 0,
+  "max_ticks": 1800,
+  "continue_after_hit": true,
+  "baseline_actions": "config/headless_baseline_actions_1800.txt",
+  "payload_actions": "payload_actions.txt",
+  "seed_synthesis_auto_shoot": true,
+  "mutation_metadata": {
+    "family": "coordinated-replay-burst",
+    "site_key": "t0000__t0225",
+    "sites": [
+      {
+        "tick_start": 0,
+        "window": 8
+      },
+      {
+        "tick_start": 225,
+        "window": 8
+      }
+    ],
+    "direction": "right"
+  }
+}

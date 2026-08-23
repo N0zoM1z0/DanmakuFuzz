@@ -174,6 +174,27 @@ artifact directory, but the top-level review files stay compact:
 - `campaign.json` records baseline reuse, per-entry hit counts, and skipped
   entries.
 
+Two useful accepted-sweep entrypoints are:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.parser.anm_runtime_campaign \
+  --entry-kind enm2 \
+  --mutant-profile accepted \
+  --limit-per-entry 6
+```
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.parser.anm_runtime_campaign \
+  --stage-filter 7 \
+  --mutant-profile accepted \
+  --limit-per-entry 6
+```
+
+Those sweeps now also write `clusters.json` beside each entry summary and at the
+campaign root, plus a compact `filters` block in `campaign.json`, so later
+basin harvest does not need to rediscover which stage / entry-kind slice was
+actually run.
+
 ## Input lane
 
 Run the generic headless input/action lane with:
@@ -221,6 +242,84 @@ entity classes so the semantic oracle does not silently lose that signal. Use
 you explicitly need the legacy per-entity arrays.
 
 The campaign root also writes `summary.jsonl` and `campaign.json`.
+
+## Replay semantic/desync lane
+
+Run the replay-derived semantic lane with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_desync_campaign \
+  --stage 6 \
+  --difficulty 3 \
+  --character 0 \
+  --shot-type 0 \
+  --actions config/headless_baseline_actions_1800.txt \
+  --max-ticks 1800 \
+  --continue-after-hit \
+  --limit 12 \
+  --trace-compact-counts
+```
+
+Or point it at a real `.rpy` and let the lane infer stage / difficulty / shot
+layout directly from the replay header and stage payload:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_desync_campaign \
+  --input path/to/case.rpy \
+  --max-ticks 1800 \
+  --continue-after-hit \
+  --limit 12
+```
+
+This lane keeps the setup generic across Touhou games that still have the same
+replay-style compressed input timeline:
+
+- it turns replay stage payloads into raw headless input masks instead of
+  depending on labeled TH06-only input semantics;
+- it can synthesize a replay seed from actions, or mutate a real replay file;
+- it reruns every mutant twice and keeps only strong runtime wedges and
+  repeat-desyncs;
+- `--limit` uses family/site-diverse replay-mutant selection instead of plain
+  append order, so short sweeps do not collapse into only `t0` cases.
+
+The artifact root keeps `seed.rpy`, `baseline-actions.txt`, one per-case
+`input.rpy`, and the usual `summary.jsonl` / `campaign.json`.
+
+## Coordinated resource lane
+
+Run coordinated stage-resource mutation with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.resource_coordination_campaign \
+  --stage 7 \
+  --mode anm-triad \
+  --limit 4
+```
+
+Or widen into coupled `ANM + ECL` cases with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.resource_coordination_campaign \
+  --stage 7 \
+  --mode all \
+  --limit 6
+```
+
+This lane is the current generic answer to “multi-resource weirdness”:
+
+- `anm-triad` applies the same accepted ANM mutant across the stage
+  `bg/enm/enm2` bundle at once;
+- `anm-ecl` anchors one accepted ANM mutant, then pairs it with source-less ECL
+  exploration families such as `generic-opcode`, `generic-arg16`,
+  `generic-arg32-cross`, `timeline-time`, and `instruction-time`;
+- every case keeps a portable per-case override bundle under its artifact
+  directory, then stages one active override tree just before launch so the
+  preserved payload paths do not perturb runtime behavior.
+
+The current implementation is still TH06-backed for execution, but the case
+construction is intentionally stage-resource-oriented rather than hardcoding
+TH06-only stage logic. That is the piece meant to carry forward into later
+games first.
 
 The generic differential oracle is intentionally a bit stricter than before for
 plain bullet-count drift. It still keeps large sustained surges and collapses,

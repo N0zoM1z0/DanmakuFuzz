@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import struct
-from typing import Sequence
+from typing import Mapping, Sequence
 
 
 GAME_VERSION = 0x102
@@ -30,6 +31,52 @@ class ReplayHeader(ctypes.LittleEndianStructure):
         ("slowdownRate3", ctypes.c_float),
         ("stageReplayDataOffsets", ctypes.c_uint32 * 7),
     ]
+
+
+class ReplayDataInput(ctypes.LittleEndianStructure):
+    _fields_ = [
+        ("frameNum", ctypes.c_int32),
+        ("inputKey", ctypes.c_uint16),
+        ("padding", ctypes.c_uint16),
+    ]
+
+
+class StageReplayDataPrefix(ctypes.LittleEndianStructure):
+    _fields_ = [
+        ("score", ctypes.c_int32),
+        ("randomSeed", ctypes.c_int16),
+        ("pointItemsCollected", ctypes.c_int16),
+        ("power", ctypes.c_uint8),
+        ("livesRemaining", ctypes.c_int8),
+        ("bombsRemaining", ctypes.c_int8),
+        ("rank", ctypes.c_uint8),
+        ("powerItemCountForScore", ctypes.c_int8),
+        ("padding", ctypes.c_uint8 * 3),
+    ]
+
+
+REPLAY_STAGE_SENTINEL_FRAME = 9_999_999
+
+
+@dataclass(frozen=True)
+class ReplayInputBookmark:
+    frame: int
+    input_mask: int
+
+
+@dataclass(frozen=True)
+class ReplayStageData:
+    stage_index: int
+    score: int
+    random_seed: int
+    point_items_collected: int
+    power: int
+    lives_remaining: int
+    bombs_remaining: int
+    rank: int
+    power_item_count_for_score: int
+    input_bookmarks: tuple[ReplayInputBookmark, ...]
+    payload_size: int
 
 
 def _decode_ascii(raw: bytes) -> str:
@@ -107,7 +154,43 @@ def build_replay(
     slowdown_rate3: float = 1.0,
     stage_payloads: Sequence[bytes] = (),
 ) -> bytes:
-    if len(stage_payloads) > 7:
+    stage_slots: list[bytes | None] = list(stage_payloads)
+    return build_replay_with_stage_slots(
+        version=version,
+        shottype_chara=shottype_chara,
+        difficulty=difficulty,
+        key=key,
+        rng_value1=rng_value1,
+        rng_value2=rng_value2,
+        rng_value3=rng_value3,
+        date=date,
+        name=name,
+        score=score,
+        slowdown_rate=slowdown_rate,
+        slowdown_rate2=slowdown_rate2,
+        slowdown_rate3=slowdown_rate3,
+        stage_payloads_by_slot=stage_slots,
+    )
+
+
+def build_replay_with_stage_slots(
+    *,
+    version: int = GAME_VERSION,
+    shottype_chara: int = 0,
+    difficulty: int = 3,
+    key: int = 0x31,
+    rng_value1: int = 0x12,
+    rng_value2: int = 0x34,
+    rng_value3: int = 0x05,
+    date: str = "20260822",
+    name: str = "DANMAKU",
+    score: int = 12345678,
+    slowdown_rate: float = 1.0,
+    slowdown_rate2: float = 1.0,
+    slowdown_rate3: float = 1.0,
+    stage_payloads_by_slot: Sequence[bytes | None] = (),
+) -> bytes:
+    if len(stage_payloads_by_slot) > 7:
         raise ValueError("TH06 replay supports at most 7 stage payloads")
     header = ReplayHeader()
     header.magic = b"T6RP"
@@ -134,7 +217,10 @@ def build_replay(
     offsets = [0] * 7
     payload_chunks: list[bytes] = []
     cursor = header_size
-    for index, payload in enumerate(stage_payloads):
+    for index in range(7):
+        payload = stage_payloads_by_slot[index] if index < len(stage_payloads_by_slot) else None
+        if payload is None:
+            continue
         offsets[index] = cursor
         payload_chunks.append(bytes(payload))
         cursor += len(payload)
@@ -163,6 +249,205 @@ def synthetic_replay_seed() -> bytes:
             b"\x50\x60\x70\x80\x90",
             b"\xA0\xB0\xC0\xD0\xE0\xF0",
         ),
+    )
+
+
+def _stage_payload_bounds(decoded: bytes, stage_offsets: Sequence[int]) -> list[tuple[int, int] | None]:
+    nonzero = [(index, offset) for index, offset in enumerate(stage_offsets) if offset != 0]
+    bounds: list[tuple[int, int] | None] = [None] * 7
+    for position, (stage_index, start) in enumerate(nonzero):
+        end = len(decoded)
+        if position + 1 < len(nonzero):
+            end = nonzero[position + 1][1]
+        bounds[stage_index] = (start, end)
+    return bounds
+
+
+def extract_stage_payloads(data: bytes) -> list[bytes | None]:
+    decoded = deobfuscate_replay(data)
+    header = ReplayHeader.from_buffer_copy(decoded)
+    stage_offsets = [int(offset) for offset in header.stageReplayDataOffsets]
+    payloads: list[bytes | None] = [None] * 7
+    for stage_index, bound in enumerate(_stage_payload_bounds(decoded, stage_offsets)):
+        if bound is None:
+            continue
+        start, end = bound
+        payloads[stage_index] = decoded[start:end]
+    return payloads
+
+
+def parse_stage_replay_data(data: bytes) -> list[ReplayStageData | None]:
+    decoded = deobfuscate_replay(data)
+    header = ReplayHeader.from_buffer_copy(decoded)
+    stage_offsets = [int(offset) for offset in header.stageReplayDataOffsets]
+    prefix_size = ctypes.sizeof(StageReplayDataPrefix)
+    input_size = ctypes.sizeof(ReplayDataInput)
+    parsed: list[ReplayStageData | None] = [None] * 7
+    for stage_index, bound in enumerate(_stage_payload_bounds(decoded, stage_offsets)):
+        if bound is None:
+            continue
+        start, end = bound
+        payload = decoded[start:end]
+        if len(payload) < prefix_size:
+            raise ValueError(f"stage {stage_index + 1} replay payload is smaller than StageReplayDataPrefix")
+        prefix = StageReplayDataPrefix.from_buffer_copy(payload)
+        cursor = prefix_size
+        bookmarks: list[ReplayInputBookmark] = []
+        while cursor + input_size <= len(payload):
+            raw = ReplayDataInput.from_buffer_copy(payload, cursor)
+            bookmark = ReplayInputBookmark(frame=int(raw.frameNum), input_mask=int(raw.inputKey))
+            bookmarks.append(bookmark)
+            cursor += input_size
+            if bookmark.frame == REPLAY_STAGE_SENTINEL_FRAME:
+                break
+        if not bookmarks:
+            raise ValueError(f"stage {stage_index + 1} replay payload has no input bookmarks")
+        if bookmarks[0].frame != 0:
+            raise ValueError(f"stage {stage_index + 1} replay input stream does not start at frame 0")
+        for left, right in zip(bookmarks, bookmarks[1:], strict=False):
+            if left.frame > right.frame:
+                raise ValueError(f"stage {stage_index + 1} replay input frames are not monotonic")
+        parsed[stage_index] = ReplayStageData(
+            stage_index=stage_index + 1,
+            score=int(prefix.score),
+            random_seed=int(prefix.randomSeed),
+            point_items_collected=int(prefix.pointItemsCollected),
+            power=int(prefix.power),
+            lives_remaining=int(prefix.livesRemaining),
+            bombs_remaining=int(prefix.bombsRemaining),
+            rank=int(prefix.rank),
+            power_item_count_for_score=int(prefix.powerItemCountForScore),
+            input_bookmarks=tuple(bookmarks),
+            payload_size=len(payload),
+        )
+    return parsed
+
+
+def expand_replay_input_bookmarks(
+    bookmarks: Sequence[ReplayInputBookmark],
+    *,
+    max_frames: int | None = None,
+) -> list[int]:
+    if not bookmarks:
+        raise ValueError("replay input bookmark stream must not be empty")
+    effective_end = bookmarks[-1].frame
+    if effective_end == REPLAY_STAGE_SENTINEL_FRAME and len(bookmarks) >= 2:
+        effective_end = bookmarks[-2].frame
+    if max_frames is not None:
+        effective_end = min(effective_end, int(max_frames))
+    if effective_end < 0:
+        return []
+    masks: list[int] = []
+    for index, bookmark in enumerate(bookmarks):
+        if bookmark.frame >= effective_end:
+            break
+        next_frame = effective_end
+        if index + 1 < len(bookmarks):
+            next_frame = min(next_frame, bookmarks[index + 1].frame)
+        if next_frame < bookmark.frame:
+            raise ValueError("replay input bookmarks are not monotonic")
+        masks.extend([bookmark.input_mask] * max(0, next_frame - bookmark.frame))
+    return masks
+
+
+def encode_stage_replay_data(
+    *,
+    input_bookmarks: Sequence[ReplayInputBookmark],
+    score: int = 0,
+    random_seed: int = 0,
+    point_items_collected: int = 0,
+    power: int = 0,
+    lives_remaining: int = 2,
+    bombs_remaining: int = 3,
+    rank: int = 0,
+    power_item_count_for_score: int = 0,
+) -> bytes:
+    if not input_bookmarks:
+        raise ValueError("stage replay input bookmarks must not be empty")
+    prefix = StageReplayDataPrefix()
+    prefix.score = int(score)
+    prefix.randomSeed = int(random_seed)
+    prefix.pointItemsCollected = int(point_items_collected)
+    prefix.power = int(power) & 0xFF
+    prefix.livesRemaining = int(lives_remaining)
+    prefix.bombsRemaining = int(bombs_remaining)
+    prefix.rank = int(rank) & 0xFF
+    prefix.powerItemCountForScore = int(power_item_count_for_score)
+    buffer = bytearray(bytes(prefix))
+    last_frame = -1
+    for bookmark in input_bookmarks:
+        if bookmark.frame < 0:
+            raise ValueError("replay bookmark frame must be non-negative")
+        if bookmark.frame < last_frame:
+            raise ValueError("replay bookmark frames must be monotonic")
+        last_frame = bookmark.frame
+        raw = ReplayDataInput()
+        raw.frameNum = int(bookmark.frame)
+        raw.inputKey = int(bookmark.input_mask) & 0xFFFF
+        raw.padding = 0
+        buffer.extend(bytes(raw))
+    if input_bookmarks[-1].frame != REPLAY_STAGE_SENTINEL_FRAME:
+        sentinel = ReplayDataInput()
+        sentinel.frameNum = REPLAY_STAGE_SENTINEL_FRAME
+        sentinel.inputKey = 0
+        sentinel.padding = 0
+        buffer.extend(bytes(sentinel))
+    return bytes(buffer)
+
+
+def input_masks_to_replay_bookmarks(input_masks: Sequence[int]) -> tuple[ReplayInputBookmark, ...]:
+    if not input_masks:
+        return (
+            ReplayInputBookmark(frame=0, input_mask=0),
+            ReplayInputBookmark(frame=REPLAY_STAGE_SENTINEL_FRAME, input_mask=0),
+        )
+    bookmarks: list[ReplayInputBookmark] = [ReplayInputBookmark(frame=0, input_mask=int(input_masks[0]) & 0xFFFF)]
+    previous = int(input_masks[0]) & 0xFFFF
+    for frame, input_mask in enumerate(input_masks[1:], start=1):
+        mask = int(input_mask) & 0xFFFF
+        if mask == previous:
+            continue
+        bookmarks.append(ReplayInputBookmark(frame=frame, input_mask=mask))
+        previous = mask
+    if previous != 0:
+        bookmarks.append(ReplayInputBookmark(frame=len(input_masks), input_mask=0))
+    bookmarks.append(ReplayInputBookmark(frame=REPLAY_STAGE_SENTINEL_FRAME, input_mask=0))
+    return tuple(bookmarks)
+
+
+def replay_stage_action_masks(data: bytes, stage: int, *, max_frames: int | None = None) -> list[int]:
+    if not (1 <= stage <= 7):
+        raise ValueError(f"replay stage must be 1..7, got {stage}")
+    stage_data = parse_stage_replay_data(data)[stage - 1]
+    if stage_data is None:
+        raise ValueError(f"replay payload has no stage {stage} data")
+    return expand_replay_input_bookmarks(stage_data.input_bookmarks, max_frames=max_frames)
+
+
+def replace_replay_stage_payloads(seed_payload: bytes, payload_overrides: Mapping[int, bytes]) -> bytes:
+    decoded = deobfuscate_replay(seed_payload)
+    header = ReplayHeader.from_buffer_copy(decoded)
+    stage_payloads = extract_stage_payloads(seed_payload)
+    stage_slots: list[bytes | None] = list(stage_payloads)
+    for stage, payload in payload_overrides.items():
+        if not (1 <= int(stage) <= 7):
+            raise ValueError(f"replay stage slot must be 1..7, got {stage}")
+        stage_slots[int(stage) - 1] = bytes(payload)
+    return build_replay_with_stage_slots(
+        version=int(header.version),
+        shottype_chara=int(header.shottypeChara),
+        difficulty=int(header.difficulty),
+        key=int(header.key),
+        rng_value1=int(header.rngValue1),
+        rng_value2=int(header.rngValue2),
+        rng_value3=int(header.rngValue3),
+        date=_decode_ascii(bytes(header.date)),
+        name=_decode_ascii(bytes(header.name)),
+        score=int(header.score),
+        slowdown_rate=float(header.slowdownRate),
+        slowdown_rate2=float(header.slowdownRate2),
+        slowdown_rate3=float(header.slowdownRate3),
+        stage_payloads_by_slot=stage_slots,
     )
 
 

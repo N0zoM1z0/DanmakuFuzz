@@ -118,6 +118,8 @@ def _select_entry_names(
     *,
     requested_entries: list[str] | None,
     stage_overrides: dict[str, int],
+    stage_filters: set[int] | None = None,
+    entry_kind_filters: set[str] | None = None,
 ) -> tuple[list[tuple[str, int]], list[dict[str, object]]]:
     archive_entry_names = {entry.filename for entry in archive.entries}
     skipped: list[dict[str, object]] = []
@@ -131,8 +133,28 @@ def _select_entry_names(
             if not practice_stage_supported(stage):
                 raise ValueError(
                     f"entry {entry_name} maps to unsupported practice stage {stage}; "
-                    "current headless practice startup only supports stages 1..6"
+                    "current headless practice startup only supports stages 1..7"
                 )
+            match = ENTRY_STAGE_RE.fullmatch(entry_name)
+            kind = match.group("kind").lower() if match is not None else None
+            if stage_filters is not None and stage not in stage_filters:
+                skipped.append(
+                    {
+                        "entry_name": entry_name,
+                        "stage": stage,
+                        "reason": "stage-filtered-out",
+                    }
+                )
+                continue
+            if entry_kind_filters is not None and kind not in entry_kind_filters:
+                skipped.append(
+                    {
+                        "entry_name": entry_name,
+                        "stage": stage,
+                        "reason": "entry-kind-filtered-out",
+                    }
+                )
+                continue
             selected.append((entry_name, stage))
         return sorted(selected, key=lambda item: _entry_sort_key(item[0], item[1])), skipped
 
@@ -148,6 +170,25 @@ def _select_entry_names(
                     "entry_name": entry.filename,
                     "stage": stage,
                     "reason": "unsupported-practice-stage",
+                }
+            )
+            continue
+        kind = match.group("kind").lower()
+        if stage_filters is not None and stage not in stage_filters:
+            skipped.append(
+                {
+                    "entry_name": entry.filename,
+                    "stage": stage,
+                    "reason": "stage-filtered-out",
+                }
+            )
+            continue
+        if entry_kind_filters is not None and kind not in entry_kind_filters:
+            skipped.append(
+                {
+                    "entry_name": entry.filename,
+                    "stage": stage,
+                    "reason": "entry-kind-filtered-out",
                 }
             )
             continue
@@ -248,6 +289,96 @@ def _trace_line_count(path: Path) -> int:
 
 def _finding_records(findings: list[Finding]) -> list[dict[str, str]]:
     return [{"kind": finding.kind, "detail": finding.detail} for finding in findings]
+
+
+def _trace_sha256(path: Path) -> str | None:
+    if not path.is_file() or path.stat().st_size == 0:
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _first_diff_line(
+    baseline_records: list[dict[str, object]],
+    case_records: list[dict[str, object]],
+) -> int:
+    for line_number, (baseline_record, case_record) in enumerate(
+        zip(baseline_records, case_records),
+        start=1,
+    ):
+        if baseline_record != case_record:
+            return line_number
+    return min(len(baseline_records), len(case_records)) + 1
+
+
+def _cluster_entry_cases(
+    entry_cases: list[dict[str, object]],
+    *,
+    baseline_records: list[dict[str, object]],
+) -> dict[str, object]:
+    clusters: dict[tuple[object, ...], dict[str, object]] = {}
+    case_reports: list[dict[str, object]] = []
+    for case in entry_cases:
+        trace_path = Path(str(case["trace"]))
+        trace_records = load_trace_records(trace_path) if trace_path.is_file() and trace_path.stat().st_size > 0 else []
+        trace_hash = _trace_sha256(trace_path)
+        first_diff_line = _first_diff_line(baseline_records, trace_records) if trace_records else None
+        normalized_findings = tuple(sorted(str(kind) for kind in case["finding_kinds"]))
+        cluster_key = (
+            case["returncode"],
+            case["timed_out"],
+            case["trace_lines"],
+            trace_hash,
+            normalized_findings,
+        )
+        cluster = clusters.setdefault(
+            cluster_key,
+            {
+                "returncode": case["returncode"],
+                "timed_out": case["timed_out"],
+                "trace_lines": case["trace_lines"],
+                "trace_sha256": trace_hash,
+                "first_diff_line": first_diff_line,
+                "finding_kinds": list(normalized_findings),
+                "mutants": [],
+                "target_hits": [],
+            },
+        )
+        cluster["mutants"].append(case["mutant_name"])
+        cluster["target_hits"] = sorted(set(cluster["target_hits"]) | {str(hit) for hit in case["target_hits"]})
+        case_reports.append(
+            {
+                "mutant_name": case["mutant_name"],
+                "returncode": case["returncode"],
+                "timed_out": case["timed_out"],
+                "trace_lines": case["trace_lines"],
+                "trace_sha256": trace_hash,
+                "first_diff_line": first_diff_line,
+                "finding_kinds": list(normalized_findings),
+                "target_hits": list(case["target_hits"]),
+            }
+        )
+    cluster_list = sorted(
+        clusters.values(),
+        key=lambda cluster: (
+            cluster["first_diff_line"] if cluster["first_diff_line"] is not None else 10**9,
+            cluster["trace_lines"],
+            cluster["returncode"] if cluster["returncode"] is not None else 10**9,
+        ),
+    )
+    return {
+        "case_count": len(case_reports),
+        "interesting_case_count": sum(1 for case in entry_cases if case["interesting"]),
+        "target_hit_case_count": sum(1 for case in entry_cases if case["target_hit"]),
+        "cluster_count": len(cluster_list),
+        "cases": case_reports,
+        "clusters": cluster_list,
+    }
 
 
 def _result_summary_record(result: dict[str, object]) -> dict[str, object]:
@@ -456,6 +587,8 @@ def parse_args() -> argparse.Namespace:
         action="append",
         help="override stage inference as ENTRY=STAGE; useful when future titles diverge from stgX naming",
     )
+    parser.add_argument("--stage-filter", action="append", type=int)
+    parser.add_argument("--entry-kind", action="append", choices=("bg", "enm", "enm2"))
     parser.add_argument("--artifact-dir", type=Path)
     parser.add_argument("--game-dir", type=Path, default=DEFAULT_GAME_DIR)
     parser.add_argument("--headless-bin", type=Path, default=default_headless_binary())
@@ -501,12 +634,16 @@ def main() -> int:
     for raw_override in args.entry_stage or []:
         entry_name, stage = _parse_entry_stage_override(raw_override)
         stage_overrides[entry_name] = stage
+    stage_filters = set(args.stage_filter or []) or None
+    entry_kind_filters = set(args.entry_kind or []) or None
 
     archive = Pbg3Archive.from_bytes(archive_path.read_bytes())
     selected_entries, skipped_entries = _select_entry_names(
         archive,
         requested_entries=args.entry,
         stage_overrides=stage_overrides,
+        stage_filters=stage_filters,
+        entry_kind_filters=entry_kind_filters,
     )
     target_kinds = set(args.target_kind or DEFAULT_TARGET_KINDS)
 
@@ -520,6 +657,7 @@ def main() -> int:
     interesting_cases = 0
     target_hit_cases = 0
     entry_reports: list[dict[str, object]] = []
+    cluster_report_entries: list[dict[str, object]] = []
 
     with (
         summary_path.open("w", encoding="utf-8") as summary_handle,
@@ -556,6 +694,18 @@ def main() -> int:
             entry_summary_path = entry_dir / "summary.jsonl"
             if not selected_mutants:
                 entry_summary_path.write_text("", encoding="utf-8")
+                cluster_summary_path = entry_dir / "clusters.json"
+                cluster_summary = {
+                    "entry_name": entry_name,
+                    "stage": stage,
+                    "case_count": 0,
+                    "interesting_case_count": 0,
+                    "target_hit_case_count": 0,
+                    "cluster_count": 0,
+                    "cases": [],
+                    "clusters": [],
+                }
+                cluster_summary_path.write_text(json.dumps(cluster_summary, indent=2) + "\n", encoding="utf-8")
                 entry_report = {
                     "entry_name": entry_name,
                     "stage": stage,
@@ -564,6 +714,7 @@ def main() -> int:
                     "parser_inventory": parser_report["inventory"],
                     "baseline_trace": None,
                     "summary": str(entry_summary_path.resolve()),
+                    "clusters": str(cluster_summary_path.resolve()),
                     "cases_run": 0,
                     "interesting_cases": 0,
                     "target_hit_cases": 0,
@@ -571,6 +722,16 @@ def main() -> int:
                 }
                 (entry_dir / "entry.json").write_text(json.dumps(entry_report, indent=2) + "\n", encoding="utf-8")
                 entry_reports.append(entry_report)
+                cluster_report_entries.append(
+                    {
+                        "entry_name": entry_name,
+                        "stage": stage,
+                        "cluster_count": 0,
+                        "interesting_case_count": 0,
+                        "target_hit_case_count": 0,
+                        "clusters": [],
+                    }
+                )
                 continue
 
             stage_context = _ensure_stage_context(
@@ -628,6 +789,21 @@ def main() -> int:
                         target_hits_handle.write(encoded + "\n")
                     print(encoded)
 
+            cluster_summary_path = entry_dir / "clusters.json"
+            cluster_summary = _cluster_entry_cases(
+                entry_cases,
+                baseline_records=stage_context.baseline_records,
+            )
+            cluster_summary.update(
+                {
+                    "entry_name": entry_name,
+                    "stage": stage,
+                    "baseline_trace": str(Path(str(stage_context.baseline_metadata["trace"])).resolve()),
+                    "baseline_trace_lines": len(stage_context.baseline_records),
+                }
+            )
+            cluster_summary_path.write_text(json.dumps(cluster_summary, indent=2) + "\n", encoding="utf-8")
+
             entry_report = {
                 "entry_name": entry_name,
                 "stage": stage,
@@ -636,6 +812,7 @@ def main() -> int:
                 "parser_inventory": parser_report["inventory"],
                 "baseline_trace": str(Path(str(stage_context.baseline_metadata["trace"])).resolve()),
                 "summary": str(entry_summary_path.resolve()),
+                "clusters": str(cluster_summary_path.resolve()),
                 "cases_run": len(entry_cases),
                 "interesting_cases": sum(int(bool(case["interesting"])) for case in entry_cases),
                 "target_hit_cases": sum(int(bool(case["target_hit"])) for case in entry_cases),
@@ -651,7 +828,24 @@ def main() -> int:
             }
             (entry_dir / "entry.json").write_text(json.dumps(entry_report, indent=2) + "\n", encoding="utf-8")
             entry_reports.append(entry_report)
+            cluster_report_entries.append(
+                {
+                    "entry_name": entry_name,
+                    "stage": stage,
+                    "cluster_count": cluster_summary["cluster_count"],
+                    "interesting_case_count": cluster_summary["interesting_case_count"],
+                    "target_hit_case_count": cluster_summary["target_hit_case_count"],
+                    "clusters": cluster_summary["clusters"],
+                }
+            )
 
+    cluster_report_path = artifact_dir / "clusters.json"
+    cluster_report = {
+        "schema": "danmakufuzz-anm-runtime-clusters-v1",
+        "entry_count": len(cluster_report_entries),
+        "entries": cluster_report_entries,
+    }
+    cluster_report_path.write_text(json.dumps(cluster_report, indent=2) + "\n", encoding="utf-8")
     campaign = {
         "schema": "danmakufuzz-anm-runtime-campaign-v1",
         "archive": str(archive_path),
@@ -682,6 +876,7 @@ def main() -> int:
         "target_hit_cases": target_hit_cases,
         "summary": str(summary_path.resolve()),
         "target_hits": str(target_hits_path.resolve()),
+        "clusters": str(cluster_report_path.resolve()),
         "entries": entry_reports,
         "baselines": [
             {
@@ -693,6 +888,10 @@ def main() -> int:
             }
             for _, context in sorted(stage_contexts.items())
         ],
+        "filters": {
+            "stage_filters": sorted(stage_filters) if stage_filters is not None else [],
+            "entry_kind_filters": sorted(entry_kind_filters) if entry_kind_filters is not None else [],
+        },
     }
     campaign_path = artifact_dir / "campaign.json"
     campaign_path.write_text(json.dumps(campaign, indent=2) + "\n", encoding="utf-8")

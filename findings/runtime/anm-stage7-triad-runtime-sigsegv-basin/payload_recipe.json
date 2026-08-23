@@ -1,0 +1,33 @@
+{
+  "finding": "runtime/anm-stage7-triad-runtime-sigsegv-basin",
+  "stage": 7,
+  "seed": 7,
+  "difficulty": 3,
+  "character": 0,
+  "shot_type": 0,
+  "max_ticks": 600,
+  "actions": "config/headless_baseline_actions.txt",
+  "entries": [
+    "stg7bg.anm",
+    "stg7enm.anm",
+    "stg7enm2.anm"
+  ],
+  "mutants": [
+    {
+      "name": "first-sprite-offset-zero",
+      "expected_trace_sha256": "a852bf2b1230dcb2db790c2925ad1b3e8b3cba04fb1167d6b2bdb0cd894b09c7"
+    },
+    {
+      "name": "first-script-id-ffff",
+      "expected_trace_sha256": "a00e02aa918e1d2e1d789403f5f1fb13b88153061d5be6ac6ae193fc5ea8ea06"
+    },
+    {
+      "name": "first-script-offset-zero",
+      "expected_trace_sha256": "554c77d3f209f73cdafbef5f3153c74cbe893a39a2ca4ab254220ba56d97f4d2"
+    },
+    {
+      "name": "first-instr-opcode-255",
+      "expected_trace_sha256": "fc493fcaafe8134f172ed1f5407413ca2d77d15f4739d2882adaa4aacb90a25d"
+    }
+  ]
+}
