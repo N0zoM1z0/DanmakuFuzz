@@ -328,36 +328,57 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
-    values = list(args.values)
-    if args.values_file is not None:
-        values.extend(_load_values_from_file(args.values_file.resolve()))
+def map_site_basins(
+    *,
+    seed_ecl: Path,
+    stage: int,
+    sub_index: int,
+    instruction_index: int,
+    field_offset: int,
+    family: str,
+    field_name: str,
+    values: list[int],
+    artifact_dir: Path,
+    headless_bin: Path,
+    game_dir: Path,
+    action_file: Path,
+    seed: int,
+    difficulty: int,
+    character: int,
+    shot_type: int,
+    max_ticks: int,
+    timeout_seconds: float,
+    auto_shoot: bool,
+    continue_after_hit: bool,
+    reuse_worker_game_dir: bool,
+    expected_opcode: int | None = None,
+    expected_original_value: int | None = None,
+) -> dict[str, Any]:
     values = _dedupe_preserve_order(values)
     if not values:
         raise RuntimeError("site basin mapper requires at least one --value or a non-empty --values-file")
 
-    seed_ecl = args.seed_ecl.resolve()
+    seed_ecl = seed_ecl.resolve()
     if not seed_ecl.is_file():
         raise FileNotFoundError(f"missing seed ecl: {seed_ecl}")
 
-    artifact_dir = (args.artifact_dir or _default_artifact_dir()).resolve()
+    artifact_dir = artifact_dir.resolve()
     ensure_directory(artifact_dir)
-    headless_bin = args.headless_bin.resolve()
-    game_dir = args.game_dir.resolve()
-    action_file = args.action_file.resolve()
+    headless_bin = headless_bin.resolve()
+    game_dir = game_dir.resolve()
+    action_file = action_file.resolve()
     seed_payload = seed_ecl.read_bytes()
 
     first_mutant, first_target = _exact_mutant(
         seed_payload=seed_payload,
-        sub_index=args.sub_index,
-        instruction_index=args.instruction_index,
-        field_offset=args.field_offset,
+        sub_index=sub_index,
+        instruction_index=instruction_index,
+        field_offset=field_offset,
         value=values[0],
-        family=args.family,
-        field_name=args.field_name,
-        expected_opcode=args.expected_opcode,
-        expected_original_value=args.expected_original_value,
+        family=family,
+        field_name=field_name,
+        expected_opcode=expected_opcode,
+        expected_original_value=expected_original_value,
     )
     original_value = int(first_target["original_value"])
     opcode = int(first_target["opcode"])
@@ -366,24 +387,24 @@ def main() -> int:
     baseline_worker_prepare = prepare_worker_game_dir(
         source_game_dir=game_dir,
         destination=baseline_worker_game_dir,
-        worker_name=f"site-basin-baseline-s{args.stage}-{args.sub_index}-{args.instruction_index}",
-        reuse=not args.no_reuse_worker_game_dir,
+        worker_name=f"site-basin-baseline-s{stage}-{sub_index}-{instruction_index}",
+        reuse=reuse_worker_game_dir,
     )
     baseline_dir = artifact_dir / "baseline"
     baseline_metadata = run_baseline(
         binary=headless_bin,
         game_dir=baseline_worker_game_dir.resolve(),
         resource_override_dir=None,
-        stage=args.stage,
-        seed=args.seed,
+        stage=stage,
+        seed=seed,
         action_file=action_file,
         artifact_dir=baseline_dir.resolve(),
-        difficulty=args.difficulty,
-        character=args.character,
-        shot_type=args.shot_type,
-        max_ticks=args.max_ticks,
-        auto_shoot=args.auto_shoot,
-        continue_after_hit=args.continue_after_hit,
+        difficulty=difficulty,
+        character=character,
+        shot_type=shot_type,
+        max_ticks=max_ticks,
+        auto_shoot=auto_shoot,
+        continue_after_hit=continue_after_hit,
         dry_run=False,
     )
     baseline_trace = Path(str(baseline_metadata["trace"]))
@@ -395,14 +416,14 @@ def main() -> int:
     for case_index, value in enumerate(values, start=1):
         mutant, target = _exact_mutant(
             seed_payload=seed_payload,
-            sub_index=args.sub_index,
-            instruction_index=args.instruction_index,
-            field_offset=args.field_offset,
+            sub_index=sub_index,
+            instruction_index=instruction_index,
+            field_offset=field_offset,
             value=value,
-            family=args.family,
-            field_name=args.field_name,
-            expected_opcode=args.expected_opcode,
-            expected_original_value=args.expected_original_value,
+            family=family,
+            field_name=field_name,
+            expected_opcode=expected_opcode,
+            expected_original_value=expected_original_value,
         )
         if first_mutant_metadata is None:
             first_mutant_metadata = dict(mutant.metadata)
@@ -410,22 +431,22 @@ def main() -> int:
         case_worker_prepare = prepare_worker_game_dir(
             source_game_dir=game_dir,
             destination=case_worker_game_dir,
-            worker_name=f"site-basin-{args.stage}-{args.sub_index}-{args.instruction_index}-{case_index}",
-            reuse=not args.no_reuse_worker_game_dir,
+            worker_name=f"site-basin-{stage}-{sub_index}-{instruction_index}-{case_index}",
+            reuse=reuse_worker_game_dir,
         )
         result = run_case(
             binary=headless_bin,
             game_dir=case_worker_game_dir.resolve(),
-            stage=args.stage,
-            seed=args.seed,
+            stage=stage,
+            seed=seed,
             action_file=action_file,
-            difficulty=args.difficulty,
-            character=args.character,
-            shot_type=args.shot_type,
-            max_ticks=args.max_ticks,
-            auto_shoot=args.auto_shoot,
-            continue_after_hit=args.continue_after_hit,
-            timeout_seconds=args.timeout_seconds,
+            difficulty=difficulty,
+            character=character,
+            shot_type=shot_type,
+            max_ticks=max_ticks,
+            auto_shoot=auto_shoot,
+            continue_after_hit=continue_after_hit,
+            timeout_seconds=timeout_seconds,
             campaign_dir=artifact_dir,
             seed_name=seed_ecl.name,
             mutant=mutant,
@@ -473,14 +494,14 @@ def main() -> int:
         "artifact_dir": str(artifact_dir),
         "seed_ecl": str(seed_ecl),
         "site": {
-            "stage": args.stage,
+            "stage": stage,
             "path": {
-                "sub_index": args.sub_index,
-                "instruction_index": args.instruction_index,
+                "sub_index": sub_index,
+                "instruction_index": instruction_index,
             },
-            "family": args.family,
-            "field_name": args.field_name,
-            "field_offset": args.field_offset,
+            "family": family,
+            "field_name": field_name,
+            "field_offset": field_offset,
             "opcode": opcode,
             "original_value": original_value,
         },
@@ -499,6 +520,39 @@ def main() -> int:
     }
     summary_path = artifact_dir / "summary.json"
     summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    return summary
+
+
+def main() -> int:
+    args = parse_args()
+    values = list(args.values)
+    if args.values_file is not None:
+        values.extend(_load_values_from_file(args.values_file.resolve()))
+    summary = map_site_basins(
+        seed_ecl=args.seed_ecl,
+        stage=args.stage,
+        sub_index=args.sub_index,
+        instruction_index=args.instruction_index,
+        field_offset=args.field_offset,
+        family=args.family,
+        field_name=args.field_name,
+        expected_opcode=args.expected_opcode,
+        expected_original_value=args.expected_original_value,
+        values=values,
+        artifact_dir=args.artifact_dir or _default_artifact_dir(),
+        headless_bin=args.headless_bin,
+        game_dir=args.game_dir,
+        action_file=args.action_file,
+        seed=args.seed,
+        difficulty=args.difficulty,
+        character=args.character,
+        shot_type=args.shot_type,
+        max_ticks=args.max_ticks,
+        timeout_seconds=args.timeout_seconds,
+        auto_shoot=args.auto_shoot,
+        continue_after_hit=args.continue_after_hit,
+        reuse_worker_game_dir=not args.no_reuse_worker_game_dir,
+    )
     print(json.dumps(summary, indent=2))
     return 0
 
