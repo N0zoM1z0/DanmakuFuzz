@@ -310,7 +310,25 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_desync_campaign \
 ```
 
 The artifact root keeps `seed.rpy`, `baseline-actions.txt`, one per-case
-`input.rpy`, and the usual `summary.jsonl` / `campaign.json`.
+`input.rpy`, plus `summary.jsonl`, `clusters.json`, and `campaign.json`.
+
+Replay clustering groups cases three ways:
+
+- `exact_clusters`, keyed by the exact `run_a.trace_sha256`;
+- `sink_clusters`, keyed by a coarser replay/runtime sink signature so “same
+  late basin, different prelude” stays visible.
+- `pattern_clusters`, keyed by stage + replay mutation pattern + coarse sink
+  metadata, so one replay-specific mutant like `stage-payload-borrow-next-s2`
+  can be reviewed across multiple source replays even when each trace hash is
+  different.
+
+Rebuild that summary later from any replay result, summary, campaign, or a
+whole replay artifact tree with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_cluster \
+  --result artifacts/semantic-replay/.../campaign.json
+```
 
 When you want to feed real full-game `.rpy` corpora instead of a single
 isolated stage replay, use the corpus runner:
@@ -329,7 +347,9 @@ This runner validates each replay, enumerates its populated stage slots, and
 then launches one child replay-desync campaign per `(replay, stage-slot)` pair.
 That matters for public TH06 corpora because most score replays are full-game
 records with stages `1..6` populated, while Extra records usually only populate
-slot `7`.
+slot `7`. The corpus root also writes a cross-replay `clusters.json`, so
+stable-trace-drift basins can be reviewed without opening every child campaign
+manually.
 
 The tracked source-of-truth for the initial public TH06 corpus lives under:
 

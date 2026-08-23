@@ -1,0 +1,66 @@
+{
+  "mutant_name": "stage-payload-borrow-prev-s3",
+  "mutant_profile": "native",
+  "continue_after_hit": true,
+  "trace_compact_counts": true,
+  "random_seed": 0,
+  "samples_per_site": 4,
+  "cases": [
+    {
+      "name": "fairysvoice-stage4-main",
+      "public_replay": "fairysvoice-th6-001",
+      "filename": "fairysvoice-th6-001.rpy",
+      "stage": 4,
+      "max_ticks": 1800,
+      "expected_runtime": {
+        "stage": 4,
+        "difficulty": 1,
+        "character": 0,
+        "shot_type": 1,
+        "seed": 4958,
+        "replay_difficulty": 1,
+        "replay_random_seed": 4958
+      },
+      "expected_trace_sha256": "2b1361ba562daa589215daa7ba440197d6b03bf9f9a5cadb26e10e62a6e45568",
+      "expected_tail": {
+        "terminal_reason": "tick-limit",
+        "tick": 1800,
+        "score": 132700,
+        "enemy_count": 10,
+        "stage_vm_loaded": false,
+        "stage_vm_script_time": 1726,
+        "stage_vm_instruction_index": 7,
+        "timeline_time": 1726,
+        "timeline_next_time": 1878
+      }
+    },
+    {
+      "name": "gensokyo-802-stage4-main",
+      "public_replay": "gensokyo-th6-802",
+      "filename": "gensokyo-th6-802.rpy",
+      "stage": 4,
+      "max_ticks": 1800,
+      "expected_runtime": {
+        "stage": 4,
+        "difficulty": 1,
+        "character": 0,
+        "shot_type": 1,
+        "seed": 59102,
+        "replay_difficulty": 1,
+        "replay_random_seed": -6434
+      },
+      "expected_trace_sha256": "6d677060a7024b13b3e2f1a6d654c13bec4ee45f650cbc1c5827cb31912a8268",
+      "expected_tail": {
+        "terminal_reason": "tick-limit",
+        "tick": 1800,
+        "score": 125070,
+        "enemy_count": 10,
+        "stage_vm_loaded": false,
+        "stage_vm_script_time": 1770,
+        "stage_vm_instruction_index": 7,
+        "timeline_time": 1770,
+        "timeline_next_time": 1878
+      }
+    }
+  ]
+}

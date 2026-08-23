@@ -10,6 +10,7 @@ import re
 from ..headless.baseline import DEFAULT_ACTION_FILE, DEFAULT_GAME_DIR, DEFAULT_TRACE_COMPACT_COUNTS, default_headless_binary
 from ..parser.replay import replay_populated_stages, validate_replay
 from ..repo import ARTIFACTS_DIR, ensure_directory
+from .replay_cluster import build_replay_clusters
 from .replay_desync_campaign import run_replay_desync_campaign
 
 
@@ -121,6 +122,7 @@ def main() -> int:
     interesting_campaigns = 0
     interesting_cases = 0
     skipped_inputs = 0
+    result_paths: list[Path] = []
 
     with summary_path.open("w", encoding="utf-8") as summary_handle, skipped_path.open(
         "w", encoding="utf-8"
@@ -207,8 +209,17 @@ def main() -> int:
                 else:
                     classification_counts["boring-campaign"] += 1
                 interesting_cases += int(report.get("interesting_cases", 0))
+                result_paths.extend(sorted(stage_artifact_dir.glob("*/result.json")))
                 summary_handle.write(json.dumps(row) + "\n")
                 print(json.dumps(row, ensure_ascii=False))
+
+    clusters_path = artifact_dir / "clusters.json"
+    clusters_payload = build_replay_clusters(
+        result_paths,
+        include_non_interesting=False,
+        member_limit=8,
+    )
+    clusters_path.write_text(json.dumps(clusters_payload, indent=2) + "\n", encoding="utf-8")
 
     report = {
         "schema": "danmakufuzz-semantic-replay-corpus-v1",
@@ -229,6 +240,7 @@ def main() -> int:
         "classification_counts": dict(sorted(classification_counts.items())),
         "summary": str(summary_path.resolve()),
         "skipped": str(skipped_path.resolve()),
+        "clusters": str(clusters_path.resolve()),
     }
     (artifact_dir / "campaign.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))

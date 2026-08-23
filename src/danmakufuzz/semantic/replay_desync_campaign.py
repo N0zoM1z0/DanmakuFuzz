@@ -27,6 +27,7 @@ from ..parser.replay import (
 )
 from ..repo import ARTIFACTS_DIR, ensure_directory
 from .input_campaign import _filter_findings, _repeat_desync_findings, _run_once, _trace_sha256
+from .replay_cluster import build_replay_clusters
 from .replay_native_mutants import generate_replay_native_mutants
 from .replay_input_mutants import (
     ReplayInputMutant,
@@ -484,6 +485,15 @@ def run_replay_desync_campaign(
             if emit_stdout:
                 print(json.dumps(result, ensure_ascii=False))
 
+    result_paths = sorted(artifact_dir.glob("*/result.json"))
+    clusters_path = artifact_dir / "clusters.json"
+    clusters_payload = build_replay_clusters(
+        result_paths,
+        include_non_interesting=False,
+        member_limit=8,
+    )
+    clusters_path.write_text(json.dumps(clusters_payload, indent=2) + "\n", encoding="utf-8")
+
     report = {
         "schema": "danmakufuzz-semantic-replay-campaign-v1",
         "seed_replay": str(seed_replay_path.resolve()),
@@ -499,6 +509,7 @@ def run_replay_desync_campaign(
         "interesting_cases": interesting_cases,
         "classification_counts": dict(sorted(classification_counts.items())),
         "summary": str(summary_path.resolve()),
+        "clusters": str(clusters_path.resolve()),
     }
     (artifact_dir / "campaign.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     if emit_stdout:
