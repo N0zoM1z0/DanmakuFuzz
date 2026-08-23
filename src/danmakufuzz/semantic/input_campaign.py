@@ -48,6 +48,7 @@ STRONG_INPUT_FINDINGS = {
     "spellcard-drift",
     "boss-health-drift",
     "input-repeat-desync",
+    "replay-stable-trace-drift",
 }
 
 

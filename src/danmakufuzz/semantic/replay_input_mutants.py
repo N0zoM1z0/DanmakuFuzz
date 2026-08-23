@@ -432,3 +432,11 @@ def select_diverse_replay_input_mutants(
         if not progressed:
             break
     return selected
+
+
+def select_diverse_replay_mutants(
+    mutants: Sequence[ReplayInputMutant],
+    *,
+    limit: int | None,
+) -> list[ReplayInputMutant]:
+    return select_diverse_replay_input_mutants(mutants, limit=limit)

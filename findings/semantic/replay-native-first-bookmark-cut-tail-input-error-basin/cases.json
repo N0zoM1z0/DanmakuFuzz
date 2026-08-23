@@ -1,0 +1,39 @@
+{
+  "schema": "danmakufuzz-finding-replay-native-first-bookmark-cut-tail-input-error-basin-v1",
+  "mutant_profile": "native",
+  "mutant_name": "bookmark-cut-tail-i001-t1",
+  "random_seed": 0,
+  "samples_per_site": 4,
+  "continue_after_hit": true,
+  "trace_compact_counts": true,
+  "cases": [
+    {
+      "name": "stage1-main",
+      "public_replay": "fairysvoice-th6-001",
+      "filename": "fairysvoice-th6-001.rpy",
+      "stage": 1,
+      "max_ticks": 1800,
+      "expected_trace_sha256": "d26794b198fde3b5bb7d8d02095e40fab9019a60cfa6cf61d1dfa06fcd7b5458",
+      "expected_runtime": {
+        "difficulty": 1,
+        "character": 0,
+        "shot_type": 1,
+        "seed": 18180
+      }
+    },
+    {
+      "name": "stage7-extra",
+      "public_replay": "fairysvoice-th6-002",
+      "filename": "fairysvoice-th6-002.rpy",
+      "stage": 7,
+      "max_ticks": 1800,
+      "expected_trace_sha256": "24b41ba055e12e0117b9c7e2851a3c89f63c67914469705f57c572e7053ca79f",
+      "expected_runtime": {
+        "difficulty": 3,
+        "character": 0,
+        "shot_type": 1,
+        "seed": 33734
+      }
+    }
+  ]
+}

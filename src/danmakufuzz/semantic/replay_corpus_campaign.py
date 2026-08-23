@@ -80,7 +80,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--actions", type=Path, default=DEFAULT_ACTION_FILE)
     parser.add_argument("--stage-filter", type=int, action="append")
     parser.add_argument("--max-ticks", type=int)
-    parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--seed", type=int)
     parser.add_argument("--timeout-seconds", type=float, default=8.0)
     parser.add_argument("--continue-after-hit", action="store_true")
     parser.add_argument("--trace-compact-counts", dest="trace_compact_counts", action="store_true")
@@ -89,6 +89,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--random-seed", type=int, default=0)
     parser.add_argument("--samples-per-site", type=int, default=4)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--mutant-profile", choices=("input", "native", "all"), default="all")
     parser.add_argument("--name-filter", action="append")
     parser.add_argument("--limit-replays", type=int)
     parser.add_argument("--limit-stage-slots", type=int)
@@ -188,6 +189,7 @@ def main() -> int:
                     random_seed=args.random_seed,
                     samples_per_site=args.samples_per_site,
                     limit=args.limit,
+                    mutant_profile=args.mutant_profile,
                     name_filters=list(args.name_filter or []),
                     emit_stdout=False,
                 )

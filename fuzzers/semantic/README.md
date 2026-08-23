@@ -277,10 +277,37 @@ replay-style compressed input timeline:
 - it turns replay stage payloads into raw headless input masks instead of
   depending on labeled TH06-only input semantics;
 - it can synthesize a replay seed from actions, or mutate a real replay file;
+- when `--input` is a real replay, it now also defaults the headless RNG seed
+  from that replay stage payload instead of forcing a fixed external seed;
+- Extra-stage TH06 replays expose `difficulty=4`; the current TH06 headless
+  runner only accepts `0..3`, so the replay lane normalizes Stage 7 / Extra
+  into headless difficulty `3` while preserving the original replay difficulty
+  in campaign metadata;
 - it reruns every mutant twice and keeps only strong runtime wedges and
   repeat-desyncs;
 - `--limit` uses family/site-diverse replay-mutant selection instead of plain
   append order, so short sweeps do not collapse into only `t0` cases.
+
+Replay mutation now has three profiles:
+
+- `input`: mutate the expanded action-mask stream only;
+- `native`: mutate replay-native fields such as header route/difficulty,
+  stage RNG seed, compressed bookmark timing, and same-replay stage-payload
+  borrowing;
+- `all`: combine both lanes, then apply the same diverse selection pass.
+
+For native replay fuzzing specifically:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_desync_campaign \
+  --input artifacts/replay-corpus-public/th06/fairysvoice-th6-002.rpy \
+  --stage 7 \
+  --max-ticks 1800 \
+  --mutant-profile native \
+  --limit 6 \
+  --continue-after-hit \
+  --trace-compact-counts
+```
 
 The artifact root keeps `seed.rpy`, `baseline-actions.txt`, one per-case
 `input.rpy`, and the usual `summary.jsonl` / `campaign.json`.

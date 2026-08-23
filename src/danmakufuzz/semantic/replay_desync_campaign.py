@@ -14,10 +14,11 @@ from ..headless.baseline import (
     default_headless_binary,
     run_baseline,
 )
-from ..interestingness.rules import load_trace_records
+from ..interestingness.rules import Finding, load_trace_records
 from ..parser.replay import (
     ReplayHeader,
     build_replay_with_stage_slots,
+    deobfuscate_replay,
     encode_stage_replay_data,
     input_masks_to_replay_bookmarks,
     parse_stage_replay_data,
@@ -25,11 +26,12 @@ from ..parser.replay import (
     replay_stage_action_masks,
 )
 from ..repo import ARTIFACTS_DIR, ensure_directory
-from .input_campaign import _filter_findings, _repeat_desync_findings, _run_once
+from .input_campaign import _filter_findings, _repeat_desync_findings, _run_once, _trace_sha256
+from .replay_native_mutants import generate_replay_native_mutants
 from .replay_input_mutants import (
     ReplayInputMutant,
     generate_replay_input_mutants,
-    select_diverse_replay_input_mutants,
+    select_diverse_replay_mutants,
 )
 
 
@@ -53,6 +55,7 @@ def _synthesize_replay_seed(
     *,
     actions_path: Path,
     stage: int,
+    seed: int,
     difficulty: int,
     character: int,
     shot_type: int,
@@ -65,7 +68,7 @@ def _synthesize_replay_seed(
     ]
     stage_payload = encode_stage_replay_data(
         input_bookmarks=input_masks_to_replay_bookmarks(input_masks),
-        random_seed=7,
+        random_seed=seed,
         power=0,
         lives_remaining=2,
         bombs_remaining=3,
@@ -85,17 +88,42 @@ def _runtime_config_from_replay(
     seed_payload: bytes,
     *,
     stage: int | None,
+    seed: int | None,
     difficulty: int | None,
     character: int | None,
     shot_type: int | None,
-) -> tuple[int, int, int, int]:
-    decoded_header = ReplayHeader.from_buffer_copy(seed_payload[: ctypes_sizeof_replay_header()])
+) -> dict[str, int]:
+    decoded = deobfuscate_replay(seed_payload)
+    decoded_header = ReplayHeader.from_buffer_copy(decoded[: ctypes_sizeof_replay_header()])
     resolved_stage = stage if stage is not None else _infer_replay_stage(seed_payload)
-    resolved_difficulty = difficulty if difficulty is not None else int(decoded_header.difficulty)
+    stage_data = parse_stage_replay_data(seed_payload)[resolved_stage - 1]
+    if stage_data is None:
+        raise ValueError(f"replay payload has no stage {resolved_stage} data")
+    replay_difficulty = difficulty if difficulty is not None else int(decoded_header.difficulty)
     shottype_chara = int(decoded_header.shottypeChara)
     resolved_character = character if character is not None else (shottype_chara // 2)
     resolved_shot_type = shot_type if shot_type is not None else (shottype_chara % 2)
-    return resolved_stage, resolved_difficulty, resolved_character, resolved_shot_type
+    resolved_seed = int(seed) if seed is not None else (int(stage_data.random_seed) & 0xFFFF)
+    resolved_difficulty = int(replay_difficulty)
+    if resolved_stage == 7 and resolved_difficulty == 4:
+        resolved_difficulty = 3
+    if not (0 <= resolved_difficulty <= 3):
+        raise ValueError(
+            f"replay-derived difficulty {replay_difficulty} for stage {resolved_stage} is unsupported by headless"
+        )
+    if not (0 <= resolved_character <= 1 and 0 <= resolved_shot_type <= 1):
+        raise ValueError(
+            f"replay-derived route is unsupported by headless: character={resolved_character} shot_type={resolved_shot_type}"
+        )
+    return {
+        "stage": int(resolved_stage),
+        "difficulty": int(resolved_difficulty),
+        "character": int(resolved_character),
+        "shot_type": int(resolved_shot_type),
+        "seed": int(resolved_seed) & 0xFFFF,
+        "replay_difficulty": int(replay_difficulty),
+        "replay_random_seed": int(stage_data.random_seed),
+    }
 
 
 def ctypes_sizeof_replay_header() -> int:
@@ -109,6 +137,7 @@ def _materialize_seed_replay(
     input_path: Path | None,
     actions_path: Path,
     stage: int | None,
+    seed: int | None,
     difficulty: int | None,
     character: int | None,
     shot_type: int | None,
@@ -116,20 +145,18 @@ def _materialize_seed_replay(
 ) -> tuple[bytes, dict[str, object], list[int]]:
     if input_path is not None:
         seed_payload = input_path.read_bytes()
-        resolved_stage, resolved_difficulty, resolved_character, resolved_shot_type = _runtime_config_from_replay(
+        runtime = _runtime_config_from_replay(
             seed_payload,
             stage=stage,
+            seed=seed,
             difficulty=difficulty,
             character=character,
             shot_type=shot_type,
         )
-        input_masks = replay_stage_action_masks(seed_payload, resolved_stage)
+        input_masks = replay_stage_action_masks(seed_payload, int(runtime["stage"]))
         return seed_payload, {
             "source": str(input_path.resolve()),
-            "stage": resolved_stage,
-            "difficulty": resolved_difficulty,
-            "character": resolved_character,
-            "shot_type": resolved_shot_type,
+            **runtime,
             "auto_shoot": False,
         }, input_masks
 
@@ -139,9 +166,11 @@ def _materialize_seed_replay(
         raise ValueError(
             "--difficulty/--character/--shot-type are required when synthesizing a replay seed from actions"
         )
+    resolved_seed = 7 if seed is None else int(seed)
     seed_payload, input_masks = _synthesize_replay_seed(
         actions_path=actions_path,
         stage=stage,
+        seed=resolved_seed,
         difficulty=difficulty,
         character=character,
         shot_type=shot_type,
@@ -150,15 +179,38 @@ def _materialize_seed_replay(
     return seed_payload, {
         "source": f"synthetic-from-actions:{actions_path.resolve()}",
         "stage": stage,
+        "seed": resolved_seed,
         "difficulty": difficulty,
+        "replay_difficulty": difficulty,
         "character": character,
         "shot_type": shot_type,
+        "replay_random_seed": resolved_seed,
         "auto_shoot": False,
     }, input_masks
 
 
 def _write_case_result(case_dir: Path, result: dict[str, object]) -> None:
     (case_dir / "result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+
+
+def _replay_stable_trace_findings(
+    *,
+    run_a: dict[str, object],
+    run_b: dict[str, object],
+    baseline_trace_sha: str | None,
+) -> list[Finding]:
+    if baseline_trace_sha is None:
+        return []
+    trace_a = run_a.get("trace_sha256")
+    trace_b = run_b.get("trace_sha256")
+    if isinstance(trace_a, str) and isinstance(trace_b, str) and trace_a == trace_b and trace_a != baseline_trace_sha:
+        return [
+            Finding(
+                "replay-stable-trace-drift",
+                f"baseline_trace_sha256={baseline_trace_sha} case_trace_sha256={trace_a}",
+            )
+        ]
+    return []
 
 
 def _run_mutant(
@@ -168,16 +220,17 @@ def _run_mutant(
     artifact_dir: Path,
     binary: Path,
     game_dir: Path,
-    stage: int,
-    seed: int,
-    difficulty: int,
-    character: int,
-    shot_type: int,
+    stage_override: int | None,
+    seed_override: int | None,
+    difficulty_override: int | None,
+    character_override: int | None,
+    shot_type_override: int | None,
     max_ticks: int,
     continue_after_hit: bool,
     timeout_seconds: float,
     trace_compact_counts: bool,
     baseline_records: list[dict[str, object]] | None,
+    baseline_trace_sha: str | None,
 ) -> dict[str, object]:
     case_name = f"{case_index:04d}-{mutant.name}"
     case_dir = artifact_dir / case_name
@@ -185,19 +238,48 @@ def _run_mutant(
 
     replay_path = case_dir / "input.rpy"
     replay_path.write_bytes(mutant.payload)
-    input_masks = replay_stage_action_masks(mutant.payload, mutant.stage, max_frames=max_ticks)
-    actions_path = case_dir / "actions.txt"
-    actions_path.write_text(serialize_mask_actions(input_masks), encoding="utf-8")
+    try:
+        runtime = _runtime_config_from_replay(
+            mutant.payload,
+            stage=stage_override if stage_override is not None else mutant.stage,
+            seed=seed_override,
+            difficulty=difficulty_override,
+            character=character_override,
+            shot_type=shot_type_override,
+        )
+        input_masks = replay_stage_action_masks(
+            mutant.payload,
+            int(runtime["stage"]),
+            max_frames=max_ticks,
+        )
+        actions_path = case_dir / "actions.txt"
+        actions_path.write_text(serialize_mask_actions(input_masks), encoding="utf-8")
+    except Exception as exc:
+        result = {
+            "case_name": case_name,
+            "mutant_name": mutant.name,
+            "source": mutant.source,
+            "stage": mutant.stage,
+            "input_replay": str(replay_path.resolve()),
+            "payload_sha256": mutant.sha256,
+            "mutation_metadata": mutant.metadata,
+            "classification": "replay-materialization-error",
+            "interesting": False,
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+        }
+        _write_case_result(case_dir, result)
+        return result
 
     run_a = _run_once(
         binary=binary,
         game_dir=game_dir,
-        stage=stage,
-        seed=seed,
+        stage=int(runtime["stage"]),
+        seed=int(runtime["seed"]),
         action_file=actions_path,
-        difficulty=difficulty,
-        character=character,
-        shot_type=shot_type,
+        difficulty=int(runtime["difficulty"]),
+        character=int(runtime["character"]),
+        shot_type=int(runtime["shot_type"]),
         max_ticks=max_ticks,
         auto_shoot=False,
         continue_after_hit=continue_after_hit,
@@ -210,12 +292,12 @@ def _run_mutant(
     run_b = _run_once(
         binary=binary,
         game_dir=game_dir,
-        stage=stage,
-        seed=seed,
+        stage=int(runtime["stage"]),
+        seed=int(runtime["seed"]),
         action_file=actions_path,
-        difficulty=difficulty,
-        character=character,
-        shot_type=shot_type,
+        difficulty=int(runtime["difficulty"]),
+        character=int(runtime["character"]),
+        shot_type=int(runtime["shot_type"]),
         max_ticks=max_ticks,
         auto_shoot=False,
         continue_after_hit=continue_after_hit,
@@ -228,6 +310,13 @@ def _run_mutant(
 
     findings = list(run_a["findings"])
     findings.extend(_repeat_desync_findings(run_a, run_b))
+    findings.extend(
+        _replay_stable_trace_findings(
+            run_a=run_a,
+            run_b=run_b,
+            baseline_trace_sha=baseline_trace_sha,
+        )
+    )
     filtered_findings = _filter_findings(findings)
     result = {
         "case_name": case_name,
@@ -238,6 +327,7 @@ def _run_mutant(
         "actions_path": str(actions_path.resolve()),
         "actions_count": len(input_masks),
         "payload_sha256": mutant.sha256,
+        "runtime": runtime,
         "mutation_metadata": mutant.metadata,
         "run_a": {key: value for key, value in run_a.items() if key != "findings"},
         "run_b": {key: value for key, value in run_b.items() if key != "findings"},
@@ -256,7 +346,7 @@ def run_replay_desync_campaign(
     game_dir: Path,
     headless_bin: Path,
     stage: int | None,
-    seed: int,
+    seed: int | None,
     difficulty: int | None,
     character: int | None,
     shot_type: int | None,
@@ -268,6 +358,7 @@ def run_replay_desync_campaign(
     random_seed: int,
     samples_per_site: int,
     limit: int | None,
+    mutant_profile: str,
     name_filters: list[str] | None = None,
     emit_stdout: bool = True,
 ) -> dict[str, object]:
@@ -277,12 +368,14 @@ def run_replay_desync_campaign(
         input_path=input_path,
         actions_path=actions_path,
         stage=stage,
+        seed=seed,
         difficulty=difficulty,
         character=character,
         shot_type=shot_type,
         auto_shoot=auto_shoot,
     )
     resolved_stage = int(seed_runtime["stage"])
+    resolved_seed = int(seed_runtime["seed"])
     resolved_difficulty = int(seed_runtime["difficulty"])
     resolved_character = int(seed_runtime["character"])
     resolved_shot_type = int(seed_runtime["shot_type"])
@@ -302,7 +395,7 @@ def run_replay_desync_campaign(
         game_dir=game_dir,
         resource_override_dir=None,
         stage=resolved_stage,
-        seed=seed,
+        seed=resolved_seed,
         action_file=baseline_actions_path,
         artifact_dir=baseline_dir,
         difficulty=resolved_difficulty,
@@ -317,21 +410,44 @@ def run_replay_desync_campaign(
     )
     baseline_trace = Path(str(baseline_metadata["trace"]))
     baseline_records = load_trace_records(baseline_trace) if baseline_trace.is_file() else None
+    baseline_trace_sha = _trace_sha256(baseline_trace)
 
-    mutants = generate_replay_input_mutants(
-        seed_payload,
-        stage=resolved_stage,
-        max_frames=resolved_max_ticks,
-        random_seed=random_seed,
-        samples_per_site=samples_per_site,
-    )
+    mutants: list[ReplayInputMutant] = []
+    if mutant_profile in {"input", "all"}:
+        mutants.extend(
+            generate_replay_input_mutants(
+                seed_payload,
+                stage=resolved_stage,
+                max_frames=resolved_max_ticks,
+                random_seed=random_seed,
+                samples_per_site=samples_per_site,
+            )
+        )
+    if mutant_profile in {"native", "all"}:
+        mutants.extend(
+            generate_replay_native_mutants(
+                seed_payload,
+                stage=resolved_stage,
+                max_frames=resolved_max_ticks,
+                random_seed=random_seed,
+                samples_per_site=samples_per_site,
+            )
+        )
+    deduped: list[ReplayInputMutant] = []
+    seen_payloads: set[str] = set()
+    for mutant in mutants:
+        if mutant.sha256 in seen_payloads:
+            continue
+        seen_payloads.add(mutant.sha256)
+        deduped.append(mutant)
+    mutants = deduped
     if name_filters:
         mutants = [
             mutant
             for mutant in mutants
             if any(name_filter in mutant.name for name_filter in name_filters)
         ]
-    mutants = select_diverse_replay_input_mutants(mutants, limit=limit)
+    mutants = select_diverse_replay_mutants(mutants, limit=limit)
 
     summary_path = artifact_dir / "summary.jsonl"
     classification_counts: Counter[str] = Counter()
@@ -344,22 +460,26 @@ def run_replay_desync_campaign(
                 artifact_dir=artifact_dir,
                 binary=headless_bin,
                 game_dir=game_dir,
-                stage=resolved_stage,
-                seed=seed,
-                difficulty=resolved_difficulty,
-                character=resolved_character,
-                shot_type=resolved_shot_type,
+                stage_override=stage,
+                seed_override=seed,
+                difficulty_override=difficulty,
+                character_override=character,
+                shot_type_override=shot_type,
                 max_ticks=resolved_max_ticks,
                 continue_after_hit=continue_after_hit,
                 timeout_seconds=timeout_seconds,
                 trace_compact_counts=trace_compact_counts,
                 baseline_records=baseline_records,
+                baseline_trace_sha=baseline_trace_sha,
             )
+            classification = str(result.get("classification", "runtime"))
             if result["interesting"]:
                 classification_counts["interesting"] += 1
                 interesting_cases += 1
             else:
                 classification_counts["boring"] += 1
+            if classification != "runtime":
+                classification_counts[classification] += 1
             summary_handle.write(json.dumps(result) + "\n")
             if emit_stdout:
                 print(json.dumps(result, ensure_ascii=False))
@@ -371,9 +491,10 @@ def run_replay_desync_campaign(
         "baseline_actions": str(baseline_actions_path.resolve()),
         "baseline": baseline_metadata,
         "stage": resolved_stage,
-        "seed": seed,
+        "seed": resolved_seed,
         "random_seed": random_seed,
         "samples_per_site": samples_per_site,
+        "mutant_profile": mutant_profile,
         "mutants_generated": len(mutants),
         "interesting_cases": interesting_cases,
         "classification_counts": dict(sorted(classification_counts.items())),
@@ -394,7 +515,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--headless-bin", type=Path, default=default_headless_binary())
     parser.add_argument("--artifact-dir", type=Path)
     parser.add_argument("--stage", type=int)
-    parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--seed", type=int)
     parser.add_argument("--actions", type=Path, default=DEFAULT_ACTION_FILE)
     parser.add_argument("--difficulty", type=int)
     parser.add_argument("--character", type=int)
@@ -411,6 +532,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--random-seed", type=int, default=0)
     parser.add_argument("--samples-per-site", type=int, default=4)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--mutant-profile", choices=("input", "native", "all"), default="all")
     parser.add_argument("--name-filter", action="append")
     return parser.parse_args()
 
@@ -437,6 +559,7 @@ def main() -> int:
         random_seed=args.random_seed,
         samples_per_site=args.samples_per_site,
         limit=args.limit,
+        mutant_profile=args.mutant_profile,
         name_filters=list(args.name_filter or []),
         emit_stdout=True,
     )
