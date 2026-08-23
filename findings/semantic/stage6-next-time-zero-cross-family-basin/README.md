@@ -63,6 +63,10 @@ Current local evidence:
 
 - fixed-staging boss exploration grid:
   `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-boss-grid-b/summary.json`
+- focused boss cross-time scout:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-boss-sweep/20260822T-boss-cross-scout-a/summary.json`
+- cluster summary for that boss cross-time scout:
+  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-clusters/20260822T-boss-cross-scout-a/summary.json`
 - single-family Stage 6 representative finding:
   `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage6-life-callback-threshold-next-time-zero-tail/README.md`
 - dedicated cross-family reproducer rerun:
@@ -86,6 +90,11 @@ Current interpretation:
 - headless: clearly interesting and reproducible;
 - this is a true cross-family basin, not just a `life-callback-threshold`
   artifact;
+- the August 22, 2026 focused boss cross-time scout broadens that claim
+  further: Stage 6 went `12 / 12 interesting` while Stages 1-5 stayed at
+  `0`, and the new `boss-timer-cross`, `life-callback-threshold-cross`, and
+  `timer-callback-threshold-cross` families all fell back into the same
+  `next_time=0` sink;
 - the earlier path-sensitive `next_time=32679` observation was useful for
   diagnosing the harness, but the stable semantic result tracked here is the
   shared `next_time=0` sink;
