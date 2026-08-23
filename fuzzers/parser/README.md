@@ -1,6 +1,10 @@
 # Parser lane
 
-Planned native harness targets:
+This lane is the file-format side of DanmakuFuzz. It stays intentionally
+separate from headless runtime orchestration so parser behavior can be
+attributed to one loader, one archive format, or one decoder at a time.
+
+Core targets:
 
 - `pbg3_archive`
 - `replay_parser`
@@ -10,13 +14,12 @@ Planned native harness targets:
 - `score_dat_loader`
 - `anm_loader`
 
-The lane is intentionally separate from headless orchestration. Parser fuzzing
-should stay small, sanitizer-friendly, and directly attributable to a specific
-loader or decoder.
+Parser fuzzing should stay small, sanitizer-friendly where possible, and
+directly attributable to a specific loader or decoder.
 
-## Current entrypoints
+## Campaign map
 
-First-pass parser-lane CLIs now exist under `src/danmakufuzz/parser/`:
+Parser CLIs live under `src/danmakufuzz/parser/`:
 
 - `python3 -m danmakufuzz.parser.pbg3_archive --archive ...`
 - `python3 -m danmakufuzz.parser.pbg3_campaign --archive ...`
@@ -30,7 +33,7 @@ First-pass parser-lane CLIs now exist under `src/danmakufuzz/parser/`:
 - `python3 -m danmakufuzz.parser.score_dat_campaign`
 - `python3 -m danmakufuzz.parser.anm_campaign --archive ... --entry stg1bg.anm`
 
-These are lightweight format validators and walkers, not yet native
+These are lightweight format validators and mutation campaigns, not full native
 sanitizer-backed fuzz harnesses.
 
 Current parser-side mutation lanes:
@@ -71,10 +74,13 @@ PYTHONPATH=src python3 -m danmakufuzz.parser.anm_campaign \
 ```
 
 These campaigns emit malformed or behavior-changing seeds into ignored artifact
-trees. PBG3 classifies each case as `parse-error`, `extract-error`, or
+trees. Most parser artifacts are disposable and can be pruned with
+`scripts/prune_artifacts.sh` once the reviewed findings have been written down.
+
+PBG3 classifies each case as `parse-error`, `extract-error`, or
 `accepted`; replay, stage `.std`, message `.dat`, cfg, score, and ANM lanes
 classify each case as rejected/fallback/accepted depending on the format, then
 flag accepted cases that materially diverge from baseline.
 
-The parser lane should remain binary-first and source-less. The current TH06
-formats are the proving ground, not the final scope.
+The parser lane should remain binary-first and source-less. TH06 is the proving
+ground, not the final scope.

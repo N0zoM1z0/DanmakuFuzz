@@ -1,88 +1,131 @@
 # DanmakuFuzz
 
-DanmakuFuzz is a Touhou 6 fuzzing workbench.
+DanmakuFuzz is a structure-aware fuzzing workbench for Touhou danmaku games.
+It is built to find the fun failures, not just parser crashes:
 
-The repository is organized around two intentionally separate lanes:
+- stage scripts that stall or drift;
+- impossible timeline state;
+- replay desyncs and replay-native wedges;
+- ANM/runtime resource weirdness;
+- accepted-but-wrong parser behavior in retail file formats.
 
-- `semantic/`: structure-aware ECL and danmaku fuzzing against a deterministic
-  headless runtime, with retail Wine replay kept as the confirmation oracle.
-- `parser/`: traditional parser and loader fuzzing for PBG3, replay, stage
-  data, and adjacent file formats.
+The current implementation starts from TH06, but the project shape is
+deliberately binary-first and source-optional so the same workflow can move
+toward TH07/TH08-era games.
 
-The project is designed to avoid coupling runtime orchestration, corpus
-management, mutation logic, and native harness code. Each lane can evolve
-independently.
+## Search model
 
-## Current focus
+DanmakuFuzz keeps search and confirmation separate.
 
-The first milestone set is:
+- Headless runtime is the fast search engine.
+- Retail Wine is the final oracle.
+- Findings live as reproducible scripts plus compact payload metadata, not as
+  one-off artifact directories.
 
-1. extract the immutable retail ECL seed corpus;
-2. produce a fixed-seed headless baseline trace;
-3. prepare a fuzz-only resource override path for headless execution;
-4. implement a first-pass ECL IR parser/serializer and targeted mutators;
-5. implement semantic interestingness rules;
-6. scaffold parser fuzz harnesses for PBG3, replay, and stage loaders;
-7. replay interesting cases against retail Wine only after headless triage.
+That split is the core design choice: high-throughput exploration first, then
+replay the interesting cases through the slower real game path.
 
-## Repository layout
+## Two lanes
 
-- `src/danmakufuzz/`: Python tooling for corpus extraction, headless
-  orchestration, ECL IR mutation, and semantic triage.
-- `docs/`: design contracts and separation boundaries.
-- `fuzzers/`: per-lane harness layout and native-target planning.
-- `config/`: tracked non-proprietary configuration, sample actions, and lane
-  defaults.
-- `scripts/`: thin shell wrappers around third-party runtime setup.
-- `third_party/`: isolated upstream dependencies such as `th06-headless`.
+- Semantic lane: mutate ECL, replay payloads, input streams, and coordinated
+  runtime resources; run them against deterministic headless traces; cluster
+  and minimize the weird cases before retail confirmation.
+- Parser lane: fuzz PBG3, replay, stage `.std`, message `.dat`, `cfg`,
+  `score.dat`, and ANM/resource loaders in a binary-first style.
 
-Runtime artifacts, extracted game data, mutable corpora, traces, and local
-state are intentionally ignored.
+The lane boundary matters. Semantic fuzzing owns gameplay/runtime oddities.
+Parser fuzzing owns accepted/rejected file-format behavior. The codebase keeps
+those two ideas separate on purpose.
 
-## Local data policy
+## What is already here
 
-This repository never commits proprietary Touhou assets. Expected local-only
-inputs live under ignored directories such as:
+- retail ECL extraction and structure-aware mutation;
+- portable source-less semantic mutation families;
+- replay-native and replay-coordinated fuzzing;
+- input/action semantic fuzzing;
+- ANM runtime-entry campaigns;
+- parser campaigns for the main TH06 retail formats;
+- clustering, minimization, and retail replay handoff;
+- findings tracked under `findings/` with `reproduce.py` entrypoints.
 
-- `reference/retail/game/th06/`
-- `reference/corpus/ecl/original/`
-- `artifacts/headless/`
-- `artifacts/retail/`
+## Repository map
+
+- `src/danmakufuzz/`: orchestration, mutation, clustering, minimization, and
+  harness glue.
+- `fuzzers/`: lane-level operator docs and campaign entrypoints.
+- `findings/`: reviewed findings plus self-contained reproduction metadata.
+- `docs/`: architecture, boundaries, portability, and retail/headless notes.
+- `config/`: tracked action streams and lane defaults.
+- `scripts/`: thin local setup and maintenance helpers.
+- `third_party/`: isolated upstream components such as `th06-headless`.
+
+Start here after cloning:
+
+- [fuzzers/semantic/README.md](/home/yann/yann/touhou/DanmakuFuzz/fuzzers/semantic/README.md)
+- [fuzzers/parser/README.md](/home/yann/yann/touhou/DanmakuFuzz/fuzzers/parser/README.md)
+- [docs/architecture.md](/home/yann/yann/touhou/DanmakuFuzz/docs/architecture.md)
+- [docs/source-less-portability.md](/home/yann/yann/touhou/DanmakuFuzz/docs/source-less-portability.md)
 
 ## Quick start
 
-Create the immutable ECL baseline corpus directly from an owned TH06 RAR:
+Extract the immutable TH06 ECL seed corpus from an owned game RAR:
 
-```bash
-python -m danmakufuzz.corpus.extract_ecl \
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.corpus.extract_ecl \
   --rar /path/to/th06.rar
 ```
 
-Prepare the headless dependency:
+Build the headless runtime:
 
-```bash
+```sh
 scripts/build_headless.sh
 ```
 
-Create an isolated local retail game directory from any owned extracted TH06
-directory:
+Bootstrap an isolated local retail game directory from owned extracted files:
 
-```bash
+```sh
 scripts/bootstrap_game_dir.sh /path/to/extracted/th06
 ```
 
-Run a deterministic baseline trace once the headless runtime and retail game
-directory are available:
+Run one deterministic baseline:
 
-```bash
-python -m danmakufuzz.headless.baseline \
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.headless.baseline \
   --game-dir reference/retail/game/th06 \
   --stage 6 \
   --seed 7
 ```
 
+Run one small semantic campaign:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.ecl_campaign \
+  --profile core \
+  --seed-ecl reference/corpus/ecl/original/ecldata6.ecl \
+  --limit 32
+```
+
+## Local data and artifact policy
+
+This repository never commits proprietary Touhou assets. Local-only inputs and
+generated outputs stay under ignored paths such as:
+
+- `reference/retail/game/th06/`
+- `reference/corpus/ecl/original/`
+- `artifacts/`
+
+Most of `artifacts/` is disposable search output. Keep only the seed corpora
+and a few curated review bundles you still care about. To prune generated
+artifact directories while keeping the current replay corpus and the curated
+replay review bundles, run:
+
+```sh
+scripts/prune_artifacts.sh --dry-run
+scripts/prune_artifacts.sh
+```
+
 ## Status
 
-This repository is the orchestration and fuzzing layer. It does not claim
-Windows-equivalent execution by itself. Headless acceleration is a search
-engine; retail Wine remains the final confirmation target.
+DanmakuFuzz is the fuzzing/orchestration layer. It does not pretend that the
+headless runtime is the game. Headless is for throughput and triage; retail
+Wine is still the authority when a case is worth confirming.

@@ -1,62 +1,106 @@
 # Architecture
 
-DanmakuFuzz splits runtime search from final confirmation.
+DanmakuFuzz is built around one separation: fast search is not final proof.
+
+## System model
+
+The project has three layers.
+
+### 1. Search layer
+
+This is where throughput matters.
+
+- deterministic headless runs
+- semantic mutation and replay/input mutation
+- parser acceptance/rejection campaigns
+- clustering and minimization
+
+This layer is allowed to be aggressive, disposable, and artifact-heavy.
+
+### 2. Confirmation layer
+
+This is where trust matters.
+
+- retail Wine replay
+- isolated retail environment setup
+- replay of already-triaged cases
+
+The confirmation layer is intentionally slower and narrower. It should consume
+reviewed candidates, not raw exploration output.
+
+### 3. Findings layer
+
+This is the durable layer.
+
+- `findings/` documents what matters
+- each finding must rebuild its payload via `reproduce.py`
+- large artifact trees are optional evidence, never the only source of truth
 
 ## Lane split
 
 ### Semantic lane
 
-The semantic lane owns:
+Semantic fuzzing owns gameplay and runtime oddities:
 
-- retail ECL seed extraction;
-- structure-aware mutation;
-- action/input mutation and replay-style determinism checks;
-- headless execution;
-- semantic interestingness scoring;
-- minimization before retail replay.
+- ECL seed extraction and mutation
+- source-less/raw field mutation families
+- input/action mutation
+- replay-native and replay-coordinated mutation
+- ANM runtime-entry campaigns
+- headless execution and semantic scoring
+- minimization before retail confirmation
 
-It does **not** own parser memory-corruption claims against unrelated file
-formats.
+It does not own generic file-format acceptance claims.
 
 ### Parser lane
 
-The parser lane owns:
+Parser fuzzing owns retail data formats:
 
-- PBG3 archive parsing and decompression fuzzing;
-- replay parser fuzzing;
-- stage `.std` loader fuzzing;
-- stage message `.dat` loader fuzzing;
-- cfg / `score.dat` / ANM loader fuzzing;
-- future standalone harnesses for other Touhou retail formats.
+- PBG3 archives
+- replay files
+- stage `.std`
+- message `.dat`
+- `cfg`
+- `score.dat`
+- ANM/resource loaders
 
-It does **not** own headless runtime orchestration.
+It does not own headless runtime orchestration.
 
-The long-term shape is binary-first and source-less: parser lanes should remain
-useful even when only retail assets exist for TH07/TH08-era games.
+## Portability boundary
+
+The intended shape is binary-first and source-optional.
+
+- TH06 source or decompilation is useful, but not required for the long-term
+  architecture.
+- New game support should land as thin profiles/adapters, not as TH06-specific
+  special cases inside the mutator core.
+- Generic mutation families should stay useful even when opcode semantics are
+  only partially labeled.
 
 ## External boundaries
 
-- `third_party/th06-headless/` is isolated and may be patched only through
-  explicit, reviewable changes or patch files.
-- retail Wine state remains outside this repository's tracked tree.
-- `touhou-solver-th06-rl` is treated as reference material, not as mutable
-  project state.
-- game-specific path/layout differences should stay behind thin profile or
-  adapter boundaries, not inside the mutator core.
+- `third_party/th06-headless/` stays isolated and should only change via
+  explicit, reviewable patches.
+- retail Wine state stays outside tracked repository data.
+- `touhou-solver-th06-rl` is reference material, not shared mutable state for
+  this project.
+- game-specific filesystem/layout differences belong in profiles or wrappers,
+  not in the generic semantic core.
 
 ## Data boundaries
 
 Tracked:
 
 - source code
-- configuration
 - documentation
+- configuration
+- compact reproduction metadata
 - small sample action streams
 
 Ignored:
 
 - proprietary game data
-- extracted corpus payloads
-- traces and artifacts
-- Wine prefixes and worker state
-- build outputs
+- extracted seed corpora from owned games
+- traces, campaign outputs, and temporary artifacts
+- Wine prefixes and worker-local state
+- build products

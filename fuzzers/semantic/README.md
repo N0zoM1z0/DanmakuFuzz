@@ -1,5 +1,9 @@
 # Semantic lane
 
+This lane is the high-throughput search side of DanmakuFuzz. It is where ECL,
+replay, input, and coordinated runtime mutations are explored before anything
+is handed to the slower retail oracle.
+
 This lane owns:
 
 - ECL seed corpus generation;
@@ -11,7 +15,29 @@ This lane owns:
 Native runtime changes, when needed, should be staged through
 `third_party/th06-headless/` with minimal, reviewable patches.
 
-## Current entrypoint
+## Campaign map
+
+The main campaign families in this file are:
+
+- ECL campaigns and exploration sweeps;
+- ANM runtime-entry campaigns;
+- input/action semantic campaigns;
+- replay semantic/desync campaigns;
+- coordinated resource campaigns;
+- clustering, minimization, and retail handoff.
+
+Most users should start with one ECL campaign, one replay campaign, or one ANM
+runtime campaign rather than a large sweep.
+
+Large campaign outputs under `artifacts/` are disposable search state. Keep the
+few curated replay bundles you still care about, and prune the rest with:
+
+```sh
+scripts/prune_artifacts.sh --dry-run
+scripts/prune_artifacts.sh
+```
+
+## ECL campaign
 
 Run a targeted Stage ECL campaign with:
 
@@ -130,8 +156,9 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.boss_sweep \
   --limit-per-seed 8
 ```
 
-This sweep skips `ecldata7.ecl` by default because current headless Practice
-startup only supports stages `1..6`.
+This sweep still skips `ecldata7.ecl` by default because the ECL campaign
+baseline path is currently wired for Practice stages `1..6`, even though other
+lanes such as replay and ANM runtime campaigns already cover stage `7`.
 
 ## ANM runtime entry lane
 
@@ -288,7 +315,7 @@ replay-style compressed input timeline:
 - `--limit` uses family/site-diverse replay-mutant selection instead of plain
   append order, so short sweeps do not collapse into only `t0` cases.
 
-Replay mutation now has three profiles:
+Replay mutation now has five profiles:
 
 - `input`: mutate the expanded action-mask stream only;
 - `native`: mutate replay-native fields such as header route/difficulty,
@@ -446,7 +473,7 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_corpus_campaign \
   --artifact-dir artifacts/replay-coordinated-extra-v2
 ```
 
-And the broader coordinated corpus harvest used on August 23, 2026 was:
+And a broader coordinated corpus harvest looks like:
 
 ```sh
 PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_corpus_campaign \

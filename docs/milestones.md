@@ -1,63 +1,45 @@
-# First milestone plan
+# Capability snapshot
 
-- [x] Extract seven retail stage ECL payloads into an ignored immutable
-  baseline corpus.
-- [x] Produce a deterministic headless baseline trace from fixed seed, stage,
-  and actions.
-- [x] Add a fuzz-only resource override path for headless execution so ECL
-  mutations do not require rebuilding a DAT archive for each run.
-- [x] Parse ECL into a first-pass IR, serialize back to bytes, and generate
-  targeted edge-case mutants.
-- [x] Score traces for crashes, hangs, NaN/Inf propagation, stalled progress,
-  and pathological entity growth.
-- [x] Stand up parser harness entrypoints for PBG3, replay, stage-data, and
-  message-data loaders.
-- [x] Extend the binary-first parser lane to cfg / `score.dat` / ANM resource
-  loaders.
-- [x] Extend exploration mutators with source-less raw opcode/arg/timeline
-  families plus generic multi-slot mutation.
-- [ ] Replay minimized interesting cases against retail Wine in isolated
-  workers.
+This file is not a changelog. It is the current project-state summary.
 
-Current repository work covers scaffolding plus the first-pass extraction,
-baseline orchestration, headless resource override, IR, mutation, and semantic
-scoring utilities. The current deterministic headless baseline is Stage 6,
-Lunatic, Reimu A, seed 7, 600 ticks, fixed action file, with identical trace
-hashes across two runs. All seven retail ECL seeds now parse and reserialize,
-the current IR mutator set expands to 6,061 targeted mutants across the retail
-corpus, and the semantic campaign lane can automatically surface process
-signals such as the zero-byte `ecldata6.ecl` `SIGSEGV` case. The parser lane
-now also has standalone PBG3, replay, stage `.std`, message `.dat`, cfg,
-`score.dat`, and ANM entrypoints for independent format validation in the same
-binary-first style. The semantic lane now also has a
-lightweight
-clustering entrypoint that groups interesting cases into reviewable clusters and
-finding/source families before minimization or retail replay, plus a thin batch
-minimization wrapper that can execute only the still-missing representative
-handoff cases. Retail handoff now has an isolated preparation
-runner that can rebuild `紅魔郷ST.DAT`/`峠杺嫿ST.DAT`, initialize a dedicated
-Wine prefix, normalize the retail cfg for Xvfb, restore the local full-unlock
-`score.dat`, and drive Reimu A Practice Stage 1--6 from either semantic
-`result.json` or minimized `summary.json`. The retail runner now also records
-window-census evidence and auto-classifies at least `crash-dialog` versus
-`game-window-live`. A thin batch wrapper can now replay multiple semantic or
-minimized cases through the same retail path and aggregate classifications into
-`results.jsonl` / `summary.json`, with queue shaping such as interesting-only
-filtering and one-sample-per-finding prioritization. Retail reports now also
-carry compact Wine crash signatures plus a headless-finding-to-retail summary
-matrix at the batch level, and the replay queue can consult prior retail
-history to skip already confirmed sources or findings. The retail signature key
-now also normalizes thread/address jitter in Wine crash lines before grouping.
-The replay queue can additionally skip only when prior retail history implies a
-single stable normalized signature for a source/finding cluster.
-The semantic lane additionally now has a generic input/action campaign that
-mutates headless action streams, reruns each case twice, and flags strong
-runtime drifts or repeat-desyncs separately from ordinary gameplay drift. The
-semantic exploration lane now also includes source-less raw families for
-generic opcode mutation, generic 16/32-bit arg mutation, generic multi-slot
-32-bit paired mutation, and timeline-level mutation, with timeline sites
-tracked separately from ordinary subroutine instruction sites.
-Milestone 7 remains open until the retail
-oracle grows beyond the current window/dialog layer; it now also has a
-screenshot-based `game-window-static` signal, but still lacks stronger
-state-aware confirmation.
+## Ready now
+
+- immutable TH06 ECL seed extraction from owned retail data
+- deterministic headless baselines and fuzz-only resource overrides
+- structure-aware ECL mutation plus source-less/raw mutation families
+- semantic exploration, family sweeps, boss sweeps, and exact reruns
+- replay-derived semantic/desync fuzzing, including replay-native and
+  replay-coordinated lanes
+- generic input/action semantic fuzzing
+- ANM runtime-entry campaigns
+- parser campaigns for PBG3, replay, stage `.std`, message `.dat`, `cfg`,
+  `score.dat`, and ANM
+- clustering and minimization before retail replay
+- isolated retail Wine preparation, replay, and batch confirmation
+- findings tracked as self-contained `reproduce.py` entrypoints plus compact
+  payload metadata
+
+## Confirmed design direction
+
+- headless search first, retail confirmation second
+- semantic findings are treated as first-class outputs, not just crashes
+- replay mutation is now broad enough to cover input-stream, replay-native, and
+  coordinated multi-site lanes
+- source-less portability remains a real requirement, not a future cleanup task
+
+## Still incomplete
+
+- stronger retail confirmation than the current window/dialog/screenshot layer
+- actual TH07/TH08 game profiles and seed corpora
+- broader render/resource-aware ANM runtime oracles
+- more coordinated multi-resource campaigns beyond the current TH06-first set
+
+## Current priority
+
+As of August 23, 2026, the project is past the pure scaffolding phase. The main
+work is now:
+
+- improving the quality of interesting-case harvest, especially replay and
+  semantic basin review;
+- keeping findings reproducible without large retained artifact trees;
+- preserving cross-game portability while the TH06 lane continues to deepen.
