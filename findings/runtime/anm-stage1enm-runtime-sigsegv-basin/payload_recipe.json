@@ -1,0 +1,13 @@
+{
+  "schema": "danmakufuzz-runtime-sigsegv-basin-v1",
+  "archive": "/home/yann/yann/touhou/DanmakuFuzz/reference/retail/game/th06/紅魔郷ST.DAT",
+  "entry": "stg1enm.anm",
+  "expected_returncode": -11,
+  "expected_trace_lines": 128,
+  "mutants": [
+    "first-sprite-offset-zero",
+    "first-script-id-ffff",
+    "first-script-offset-zero",
+    "first-instr-opcode-255"
+  ]
+}
