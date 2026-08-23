@@ -19,7 +19,7 @@ class PayloadMutant:
     payload: bytes
     source: str
     path: tuple[int, int] | None = None
-    metadata: dict[str, int | str] | None = None
+    metadata: dict[str, object] | None = None
 
 
 def _replace_i16(buffer: bytes, offset: int, value: int) -> bytes:

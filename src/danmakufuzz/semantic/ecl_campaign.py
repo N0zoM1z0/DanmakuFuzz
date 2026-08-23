@@ -42,6 +42,18 @@ DEFAULT_EXPLORATION_CAMPAIGN_LIMIT = 128
 DEFAULT_EXPLORATION_SWEEP_LIMIT = 32
 DEFAULT_EXPLORATION_GRID_LIMIT = 32
 DEFAULT_CORE_NAME_FILTERS = (
+    "instruction-time-",
+    "generic-opcode-",
+    "instruction-aux-byte-",
+    "difficulty-mask-",
+    "generic-arg16-",
+    "generic-arg32-",
+    "generic-arg32-cross-",
+    "adjacent-instruction-time-cross-",
+    "timeline-time-",
+    "timeline-arg0-",
+    "timeline-opcode-",
+    "adjacent-timeline-time-cross-",
     "jump-offset-",
     "call-sub-",
     "move-time-",
@@ -147,10 +159,56 @@ def mutant_family(mutant: PayloadMutant, family_filters: Sequence[str] | None = 
 
 
 def mutant_site(mutant: PayloadMutant) -> str:
+    metadata = mutant.metadata or {}
+    site_key = metadata.get("site_key")
+    if isinstance(site_key, str) and site_key:
+        return site_key
     if mutant.path is None:
         return "raw"
     sub_index, instruction_index = mutant.path
     return f"s{sub_index:02d}:i{instruction_index:04d}"
+
+
+def mutant_site_slug(mutant: PayloadMutant) -> str:
+    metadata = mutant.metadata or {}
+    site_slug = metadata.get("site_slug")
+    if isinstance(site_slug, str) and site_slug:
+        return site_slug
+    if mutant.path is None:
+        return "raw"
+    sub_index, instruction_index = mutant.path
+    return f"s{sub_index:02d}-i{instruction_index:04d}"
+
+
+def mutant_sites_record(mutant: PayloadMutant) -> list[dict[str, object]] | None:
+    metadata = mutant.metadata or {}
+    sites = metadata.get("sites")
+    if isinstance(sites, list):
+        normalized: list[dict[str, object]] = []
+        for site in sites:
+            if not isinstance(site, dict):
+                continue
+            sub_index = site.get("sub_index")
+            instruction_index = site.get("instruction_index")
+            if isinstance(sub_index, int) and isinstance(instruction_index, int):
+                normalized.append(
+                    {"sub_index": sub_index, "instruction_index": instruction_index}
+                )
+                continue
+            site_kind = site.get("site_kind")
+            if isinstance(site_kind, str):
+                normalized_site = {"site_kind": site_kind}
+                for key, value in site.items():
+                    if key == "site_kind":
+                        continue
+                    if isinstance(value, (int, str)):
+                        normalized_site[key] = value
+                normalized.append(normalized_site)
+        if normalized:
+            return normalized
+    if mutant.path is None:
+        return None
+    return [{"sub_index": mutant.path[0], "instruction_index": mutant.path[1]}]
 
 
 def resolve_selection_mode(*, mutation_mode: str, selection_mode: str) -> str:
@@ -354,8 +412,7 @@ def slugify_case_name(mutant: PayloadMutant, case_index: int) -> str:
     slug = re.sub(r"[^a-zA-Z0-9-]+", "-", slug).strip("-").lower()
     if mutant.path is None:
         return f"{case_index:04d}-{slug}-raw"
-    sub_index, instruction_index = mutant.path
-    return f"{case_index:04d}-{slug}-s{sub_index:02d}-i{instruction_index:04d}"
+    return f"{case_index:04d}-{slug}-{mutant_site_slug(mutant)}"
 
 
 def classify_process_result(returncode: int | None, *, timed_out: bool) -> list[Finding]:
@@ -485,6 +542,7 @@ def run_case(
             if mutant.path is not None
             else None
         ),
+        "sites": mutant_sites_record(mutant),
         "mutation_metadata": mutant.metadata,
         "command": command,
         "seed_name": seed_name,

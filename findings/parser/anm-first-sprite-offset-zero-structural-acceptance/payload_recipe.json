@@ -1,0 +1,8 @@
+{
+  "schema": "danmakufuzz-parser-payload-recipe-v1",
+  "type": "anm",
+  "archive": "reference/retail/game/th06/紅魔郷ST.DAT",
+  "entry": "stg1enm.anm",
+  "mutant_name": "first-sprite-offset-zero",
+  "expected_payload_sha256": "ead6a463f988a2ea97b1ec1c484e7d4d5fd57bb325cb344ba3b64e3d1c59cd4b"
+}

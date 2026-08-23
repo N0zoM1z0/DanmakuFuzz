@@ -10,6 +10,7 @@ The semantic lane owns:
 
 - retail ECL seed extraction;
 - structure-aware mutation;
+- action/input mutation and replay-style determinism checks;
 - headless execution;
 - semantic interestingness scoring;
 - minimization before retail replay.
@@ -24,9 +25,14 @@ The parser lane owns:
 - PBG3 archive parsing and decompression fuzzing;
 - replay parser fuzzing;
 - stage `.std` loader fuzzing;
-- future standalone harnesses for other TH06 formats.
+- stage message `.dat` loader fuzzing;
+- cfg / `score.dat` / ANM loader fuzzing;
+- future standalone harnesses for other Touhou retail formats.
 
 It does **not** own headless runtime orchestration.
+
+The long-term shape is binary-first and source-less: parser lanes should remain
+useful even when only retail assets exist for TH07/TH08-era games.
 
 ## External boundaries
 
@@ -35,6 +41,8 @@ It does **not** own headless runtime orchestration.
 - retail Wine state remains outside this repository's tracked tree.
 - `touhou-solver-th06-rl` is treated as reference material, not as mutable
   project state.
+- game-specific path/layout differences should stay behind thin profile or
+  adapter boundaries, not inside the mutator core.
 
 ## Data boundaries
 

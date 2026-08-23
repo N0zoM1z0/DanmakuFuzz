@@ -10,8 +10,12 @@
   targeted edge-case mutants.
 - [x] Score traces for crashes, hangs, NaN/Inf propagation, stalled progress,
   and pathological entity growth.
-- [x] Stand up parser harness entrypoints for PBG3, replay, and stage-data
+- [x] Stand up parser harness entrypoints for PBG3, replay, stage-data, and
+  message-data loaders.
+- [x] Extend the binary-first parser lane to cfg / `score.dat` / ANM resource
   loaders.
+- [x] Extend exploration mutators with source-less raw opcode/arg/timeline
+  families plus generic multi-slot mutation.
 - [ ] Replay minimized interesting cases against retail Wine in isolated
   workers.
 
@@ -23,8 +27,10 @@ hashes across two runs. All seven retail ECL seeds now parse and reserialize,
 the current IR mutator set expands to 6,061 targeted mutants across the retail
 corpus, and the semantic campaign lane can automatically surface process
 signals such as the zero-byte `ecldata6.ecl` `SIGSEGV` case. The parser lane
-now also has standalone PBG3, replay, and stage `.std` entrypoints for
-independent format validation. The semantic lane now also has a lightweight
+now also has standalone PBG3, replay, stage `.std`, message `.dat`, cfg,
+`score.dat`, and ANM entrypoints for independent format validation in the same
+binary-first style. The semantic lane now also has a
+lightweight
 clustering entrypoint that groups interesting cases into reviewable clusters and
 finding/source families before minimization or retail replay, plus a thin batch
 minimization wrapper that can execute only the still-missing representative
@@ -44,6 +50,13 @@ history to skip already confirmed sources or findings. The retail signature key
 now also normalizes thread/address jitter in Wine crash lines before grouping.
 The replay queue can additionally skip only when prior retail history implies a
 single stable normalized signature for a source/finding cluster.
+The semantic lane additionally now has a generic input/action campaign that
+mutates headless action streams, reruns each case twice, and flags strong
+runtime drifts or repeat-desyncs separately from ordinary gameplay drift. The
+semantic exploration lane now also includes source-less raw families for
+generic opcode mutation, generic 16/32-bit arg mutation, generic multi-slot
+32-bit paired mutation, and timeline-level mutation, with timeline sites
+tracked separately from ordinary subroutine instruction sites.
 Milestone 7 remains open until the retail
 oracle grows beyond the current window/dialog layer; it now also has a
 screenshot-based `game-window-static` signal, but still lacks stronger

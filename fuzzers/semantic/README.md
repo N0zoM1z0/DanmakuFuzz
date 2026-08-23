@@ -31,8 +31,8 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.ecl_campaign \
 ```
 
 The `core` profile narrows mutation selection to portable control-flow, timing,
-bullet-count, drop-item, and `time-set` families. It skips structural payload
-damage and boss-only families by default.
+bullet-count, drop-item, raw opcode/arg, and timeline families. It skips
+structural payload damage and boss-only families by default.
 
 Add `--mutation-mode exploration` to switch from fixed targeted cases to the
 seeded sampler. That sampler still keeps semantic anchor values, but each site
@@ -70,7 +70,14 @@ few groups in a fixed order. That matters because earlier `4`-sample runs kept
 over-exercising anchor/relative lanes while starving later bit-flip, wide
 random, and crossed-pair lanes. Paired-field exploration additionally mixes
 left/right sampled pools directly now, so cross-field lanes are not limited to
-just diagonal or mirrored pairs.
+just diagonal or mirrored pairs. Exploration also now emits adjacent
+instruction-time paired mutants as first-class multi-site cases, with explicit
+`site_key` / `sites` metadata so later selection and findings can distinguish
+them from single-site scalar mutations. The source-less lane now also emits raw
+families such as `generic-opcode`, `generic-arg16`, `generic-arg32-cross`,
+`timeline-time`, `timeline-arg0`, and `adjacent-timeline-time-cross`, so
+future games can still be fuzzed meaningfully before opcode semantics are fully
+labeled.
 
 Sweep that reusable family set across the playable retail seeds with:
 
@@ -125,6 +132,32 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.boss_sweep \
 
 This sweep skips `ecldata7.ecl` by default because current headless Practice
 startup only supports stages `1..6`.
+
+## Input lane
+
+Run the generic headless input/action lane with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.input_campaign \
+  --stage 6 \
+  --seed 7 \
+  --actions config/headless_baseline_actions_1800.txt \
+  --max-ticks 1800 \
+  --continue-after-hit \
+  --limit 12 \
+  --random-seed 7 \
+  --samples-per-site 3
+```
+
+This lane is intentionally narrower than raw gameplay differential fuzzing:
+
+- it mutates the action stream instead of ECL;
+- it reruns every mutant twice with the same seed;
+- it only keeps strong runtime findings such as stalls, late script/timeline
+  wedges, explosions, non-finite values, or repeat-desyncs;
+- it round-robins selection across input families and input sites when
+  `--limit` is active, so the budget does not get swallowed by early `t0`
+  bursts.
 
 Each case gets its own ignored artifact directory containing:
 

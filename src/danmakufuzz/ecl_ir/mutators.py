@@ -5,7 +5,7 @@ import hashlib
 import random
 from collections.abc import Sequence
 
-from .model import EclFile, EclSubroutine, RawInstruction
+from .model import EclFile, EclSubroutine, RawInstruction, TimelineInstruction
 
 
 OP_JUMP = 2
@@ -48,9 +48,9 @@ class DeferredMutation:
 @dataclass(frozen=True)
 class Mutant:
     name: str
-    path: tuple[int, int]
+    path: tuple[int, int] | None
     ecl: EclFile | DeferredMutation
-    metadata: dict[str, int | str] | None = None
+    metadata: dict[str, object] | None = None
 
 
 def _replace_i16(buffer: bytes, offset: int, value: int) -> bytes:
@@ -108,6 +108,62 @@ def _materialized_clone_with_mutated_instruction(
     instructions = list(selected_sub.instructions)
     instructions[instruction_index] = instruction
     subs[sub_index] = EclSubroutine(file_offset=selected_sub.file_offset, instructions=instructions)
+    return EclFile(
+        sub_count=ecl.sub_count,
+        main_count=ecl.main_count,
+        timeline_offsets=ecl.timeline_offsets,
+        timeline=ecl.timeline,
+        subs=subs,
+    )
+
+
+def _materialized_clone_with_mutated_timeline_instruction(
+    ecl: EclFile,
+    instruction_index: int,
+    instruction: TimelineInstruction,
+) -> EclFile:
+    timeline = list(ecl.timeline)
+    timeline[instruction_index] = instruction
+    return EclFile(
+        sub_count=ecl.sub_count,
+        main_count=ecl.main_count,
+        timeline_offsets=ecl.timeline_offsets,
+        timeline=timeline,
+        subs=ecl.subs,
+    )
+
+
+def _materialized_clone_with_mutated_timeline_instructions(
+    ecl: EclFile,
+    replacements: dict[int, TimelineInstruction],
+) -> EclFile:
+    timeline = list(ecl.timeline)
+    for instruction_index, instruction in replacements.items():
+        timeline[instruction_index] = instruction
+    return EclFile(
+        sub_count=ecl.sub_count,
+        main_count=ecl.main_count,
+        timeline_offsets=ecl.timeline_offsets,
+        timeline=timeline,
+        subs=ecl.subs,
+    )
+
+
+def _materialized_clone_with_mutated_instructions(
+    ecl: EclFile,
+    replacements: dict[tuple[int, int], RawInstruction],
+) -> EclFile:
+    subs = list(ecl.subs)
+    instructions_by_sub: dict[int, list[RawInstruction]] = {}
+    for (sub_index, instruction_index), instruction in replacements.items():
+        instructions = instructions_by_sub.get(sub_index)
+        if instructions is None:
+            instructions = list(subs[sub_index].instructions)
+            instructions_by_sub[sub_index] = instructions
+        instructions[instruction_index] = instruction
+    for sub_index, instructions in instructions_by_sub.items():
+        selected_sub = subs[sub_index]
+        subs[sub_index] = EclSubroutine(file_offset=selected_sub.file_offset, instructions=instructions)
     return EclFile(
         sub_count=ecl.sub_count,
         main_count=ecl.main_count,
@@ -355,7 +411,6 @@ def _family_requested(family: str, family_filters: Sequence[str] | None) -> bool
     return any(
         family == token
         or family.startswith(f"{token}-")
-        or token.startswith(f"{family}-")
         for token in normalized_filters
     )
 
@@ -1413,20 +1468,91 @@ def _sample_paired_signed_i32(
     )
 
 
+def _select_slot_indices(
+    *,
+    slot_count: int,
+    rng: random.Random,
+    target_count: int,
+) -> list[int]:
+    if slot_count <= 0 or target_count <= 0:
+        return []
+    if slot_count <= target_count:
+        return list(range(slot_count))
+
+    anchors = [0, 1, slot_count // 2, slot_count - 2, slot_count - 1]
+    selected: list[int] = []
+    for index in anchors:
+        if index < 0 or index >= slot_count:
+            continue
+        if index in selected:
+            continue
+        selected.append(index)
+        if len(selected) >= target_count:
+            return selected
+
+    remaining = [index for index in range(slot_count) if index not in selected]
+    rng.shuffle(remaining)
+    selected.extend(remaining[: max(0, target_count - len(selected))])
+    return selected
+
+
 def _select_generic_i32_slots(
     *,
     slot_count: int,
     rng: random.Random,
+    target_count: int,
 ) -> list[int]:
-    if slot_count <= 0:
-        return []
-    if slot_count <= 2:
-        return list(range(slot_count))
-    anchor_pool = sorted({0, 1, slot_count - 2, slot_count - 1})
-    first = anchor_pool[rng.randrange(len(anchor_pool))]
-    remaining = [index for index in range(slot_count) if index != first]
-    second = remaining[rng.randrange(len(remaining))]
-    return [first, second]
+    return _select_slot_indices(
+        slot_count=slot_count,
+        rng=rng,
+        target_count=target_count,
+    )
+
+
+def _select_generic_i16_slots(
+    *,
+    slot_count: int,
+    rng: random.Random,
+    target_count: int,
+) -> list[int]:
+    return _select_slot_indices(
+        slot_count=slot_count,
+        rng=rng,
+        target_count=target_count,
+    )
+
+
+def _timeline_site_key(instruction_index: int) -> str:
+    return f"tl{instruction_index:04d}"
+
+
+def _timeline_pair_key(instruction_indices: Sequence[int]) -> str:
+    return "__".join(_timeline_site_key(instruction_index) for instruction_index in instruction_indices)
+
+
+def _timeline_site_records(instruction_indices: Sequence[int]) -> list[dict[str, object]]:
+    return [
+        {
+            "site_kind": "timeline",
+            "instruction_index": instruction_index,
+        }
+        for instruction_index in instruction_indices
+    ]
+
+
+def _site_key_from_pairs(sites: Sequence[tuple[int, int]]) -> str:
+    return "__".join(f"s{sub_index:02d}:i{instruction_index:04d}" for sub_index, instruction_index in sites)
+
+
+def _site_slug_from_pairs(sites: Sequence[tuple[int, int]]) -> str:
+    return "__".join(f"s{sub_index:02d}-i{instruction_index:04d}" for sub_index, instruction_index in sites)
+
+
+def _site_records_from_pairs(sites: Sequence[tuple[int, int]]) -> list[dict[str, int]]:
+    return [
+        {"sub_index": sub_index, "instruction_index": instruction_index}
+        for sub_index, instruction_index in sites
+    ]
 
 
 def _sample_site_mutants(
@@ -1532,6 +1658,48 @@ def _sample_site_mutants(
                 )
             )
 
+    def append_instruction_i16_samples(
+        family: str,
+        *,
+        field_name: str,
+        field: str,
+        metadata_family: str | None = None,
+    ) -> None:
+        current = int(getattr(instruction, field_name))
+        rng = _site_rng(
+            random_seed,
+            opcode=instruction.opcode,
+            sub_index=sub_index,
+            instruction_index=instruction_index,
+            family=family,
+        )
+        for value in _sample_signed_i16(
+            current=current,
+            budget=samples_per_site,
+            rng=rng,
+            family=field,
+        ):
+            mutants.append(
+                Mutant(
+                    f"{family}-sampled-{_value_slug(value)}",
+                    key,
+                    _clone_with_mutated_instruction(
+                        ecl,
+                        sub_index,
+                        instruction_index,
+                        RawInstruction(**{**instruction.__dict__, field_name: value}),
+                    ),
+                    metadata={
+                        "strategy": "sampled-instruction-i16",
+                        "family": metadata_family or family,
+                        "field_name": field_name,
+                        "field": field,
+                        "value": value,
+                        "random_seed": random_seed,
+                    },
+                )
+            )
+
     def append_instruction_i32_samples(
         family: str,
         *,
@@ -1578,6 +1746,7 @@ def _sample_site_mutants(
         *,
         field_name: str,
         field: str,
+        metadata_family: str | None = None,
     ) -> None:
         current = int(getattr(instruction, field_name)) & 0xFF
         rng = _site_rng(
@@ -1605,7 +1774,7 @@ def _sample_site_mutants(
                     ),
                     metadata={
                         "strategy": "sampled-instruction-u8",
-                        "family": family,
+                        "family": metadata_family or family,
                         "field_name": field_name,
                         "field": field,
                         "value": value,
@@ -1669,6 +1838,7 @@ def _sample_site_mutants(
         right_offset: int,
         field_left: str,
         field_right: str,
+        metadata_family: str | None = None,
     ) -> None:
         current_left = _read_i32(instruction.args, left_offset)
         current_right = _read_i32(instruction.args, right_offset)
@@ -1701,7 +1871,7 @@ def _sample_site_mutants(
                     ),
                     metadata={
                         "strategy": "sampled-i32-pair",
-                        "family": family,
+                        "family": metadata_family or family,
                         "field_left": field_left,
                         "field_right": field_right,
                         "left_offset": left_offset,
@@ -1716,9 +1886,54 @@ def _sample_site_mutants(
     note_family("instruction-time")
     if _family_requested("instruction-time", family_filters):
         append_instruction_i32_samples("instruction-time", field_name="time", field="time")
+    note_family("generic-opcode")
+    if _family_requested("generic-opcode", family_filters):
+        append_instruction_i16_samples("generic-opcode", field_name="opcode", field="generic")
     note_family("difficulty-mask")
     if _family_requested("difficulty-mask", family_filters):
         append_instruction_u8_samples("difficulty-mask", field_name="skip_for_difficulty", field="bitmask")
+    note_family("instruction-aux-byte")
+    if _family_requested("instruction-aux-byte", family_filters):
+        aux_rng = _site_rng(
+            random_seed,
+            opcode=instruction.opcode,
+            sub_index=sub_index,
+            instruction_index=instruction_index,
+            family="instruction-aux-byte-fields",
+        )
+        selected_aux_fields = ["unk8", "unk_a", "unk_b"]
+        if len(selected_aux_fields) > 2:
+            aux_rng.shuffle(selected_aux_fields)
+            selected_aux_fields = selected_aux_fields[:2]
+        for field_name in selected_aux_fields:
+            append_instruction_u8_samples(
+                f"instruction-aux-byte-{field_name}",
+                field_name=field_name,
+                field="bitmask",
+                metadata_family="instruction-aux-byte",
+            )
+    if len(instruction.args) >= 2:
+        note_family("generic-arg16")
+        if _family_requested("generic-arg16", family_filters):
+            slot_rng = _site_rng(
+                random_seed,
+                opcode=instruction.opcode,
+                sub_index=sub_index,
+                instruction_index=instruction_index,
+                family="generic-arg16-slots",
+            )
+            slot_indices = _select_generic_i16_slots(
+                slot_count=len(instruction.args) // 2,
+                rng=slot_rng,
+                target_count=min(len(instruction.args) // 2, max(2, samples_per_site)),
+            )
+            for slot_index in slot_indices:
+                append_i16_samples(
+                    f"generic-arg16-o{slot_index}",
+                    arg_offset=slot_index * 2,
+                    field="generic",
+                    metadata_family="generic-arg16",
+                )
     if len(instruction.args) >= 4:
         note_family("generic-arg32")
         if _family_requested("generic-arg32", family_filters):
@@ -1732,6 +1947,7 @@ def _sample_site_mutants(
             slot_indices = _select_generic_i32_slots(
                 slot_count=len(instruction.args) // 4,
                 rng=slot_rng,
+                target_count=min(len(instruction.args) // 4, max(2, samples_per_site)),
             )
             for slot_index in slot_indices:
                 append_i32_samples(
@@ -1739,6 +1955,37 @@ def _sample_site_mutants(
                     arg_offset=slot_index * 4,
                     field="generic",
                     metadata_family="generic-arg32",
+                )
+    if len(instruction.args) >= 8:
+        note_family("generic-arg32-cross")
+        if _family_requested("generic-arg32-cross", family_filters):
+            pair_rng = _site_rng(
+                random_seed,
+                opcode=instruction.opcode,
+                sub_index=sub_index,
+                instruction_index=instruction_index,
+                family="generic-arg32-cross-slots",
+            )
+            slot_indices = _select_generic_i32_slots(
+                slot_count=len(instruction.args) // 4,
+                rng=pair_rng,
+                target_count=min(len(instruction.args) // 4, max(3, samples_per_site + 1)),
+            )
+            slot_pairs: list[tuple[int, int]] = []
+            if len(slot_indices) >= 2:
+                slot_pairs.append((slot_indices[0], slot_indices[1]))
+            if len(slot_indices) >= 4:
+                slot_pairs.append((slot_indices[2], slot_indices[3]))
+            elif len(slot_indices) >= 3:
+                slot_pairs.append((slot_indices[0], slot_indices[2]))
+            for left_slot, right_slot in slot_pairs:
+                append_i32_pair_samples(
+                    f"generic-arg32-cross-o{left_slot}-o{right_slot}",
+                    left_offset=left_slot * 4,
+                    right_offset=right_slot * 4,
+                    field_left="generic",
+                    field_right="generic",
+                    metadata_family="generic-arg32-cross",
                 )
 
     sub_count = len(ecl.subs)
@@ -1861,6 +2108,227 @@ def _sample_site_mutants(
     )
 
 
+def _sample_timeline_mutants(
+    ecl: EclFile,
+    *,
+    random_seed: int,
+    samples_per_site: int,
+    family_filters: Sequence[str] | None,
+) -> list[Mutant]:
+    mutants: list[Mutant] = []
+    for instruction_index, instruction in enumerate(ecl.timeline):
+        site_family_order: list[str] = []
+        site_key = _timeline_site_key(instruction_index)
+        site_records = _timeline_site_records((instruction_index,))
+
+        def note_family(family: str) -> None:
+            site_family_order.append(family)
+
+        def append_timeline_i16_samples(
+            family: str,
+            *,
+            field_name: str,
+            field: str,
+        ) -> None:
+            current = int(getattr(instruction, field_name))
+            rng = _site_rng(
+                random_seed,
+                opcode=instruction.opcode,
+                sub_index=-1,
+                instruction_index=instruction_index,
+                family=family,
+            )
+            for value in _sample_signed_i16(
+                current=current,
+                budget=samples_per_site,
+                rng=rng,
+                family=field,
+            ):
+                mutants.append(
+                    Mutant(
+                        f"{family}-sampled-{_value_slug(value)}",
+                        None,
+                        _materialized_clone_with_mutated_timeline_instruction(
+                            ecl,
+                            instruction_index,
+                            TimelineInstruction(**{**instruction.__dict__, field_name: value}),
+                        ),
+                        metadata={
+                            "strategy": "sampled-timeline-i16",
+                            "family": family,
+                            "field_name": field_name,
+                            "field": field,
+                            "value": value,
+                            "random_seed": random_seed,
+                            "site_key": site_key,
+                            "site_slug": site_key,
+                            "sites": site_records,
+                        },
+                    )
+                )
+
+        note_family("timeline-time")
+        if _family_requested("timeline-time", family_filters):
+            append_timeline_i16_samples("timeline-time", field_name="time", field="generic")
+        note_family("timeline-arg0")
+        if _family_requested("timeline-arg0", family_filters):
+            append_timeline_i16_samples("timeline-arg0", field_name="arg0", field="generic")
+        note_family("timeline-opcode")
+        if _family_requested("timeline-opcode", family_filters):
+            append_timeline_i16_samples("timeline-opcode", field_name="opcode", field="generic")
+
+        site_mutants = [mutant for mutant in mutants if mutant.metadata and mutant.metadata.get("site_key") == site_key]
+        if not site_mutants:
+            continue
+        reordered = _reorder_site_mutants(
+            site_mutants,
+            random_seed=random_seed,
+            opcode=instruction.opcode,
+            sub_index=-1,
+            instruction_index=instruction_index,
+            family_order_hint=site_family_order,
+        )
+        if reordered != site_mutants:
+            survivors = [mutant for mutant in mutants if mutant not in site_mutants]
+            survivors.extend(reordered)
+            mutants = survivors
+    return mutants
+
+
+def _sample_adjacent_time_pair_mutants(
+    ecl: EclFile,
+    *,
+    random_seed: int,
+    samples_per_site: int,
+    family_filters: Sequence[str] | None,
+) -> list[Mutant]:
+    family = "adjacent-instruction-time-cross"
+    if not _family_requested(family, family_filters):
+        return []
+
+    mutants: list[Mutant] = []
+    for sub_index, subroutine in enumerate(ecl.subs):
+        instructions = subroutine.instructions
+        for instruction_index in range(len(instructions) - 1):
+            left_instruction = instructions[instruction_index]
+            right_instruction = instructions[instruction_index + 1]
+            if abs(int(left_instruction.time) - int(right_instruction.time)) > 32:
+                continue
+            left_site = (sub_index, instruction_index)
+            right_site = (sub_index, instruction_index + 1)
+            sites = (left_site, right_site)
+            rng = _site_rng(
+                random_seed,
+                opcode=((left_instruction.opcode & 0xFFFF) << 16) | (right_instruction.opcode & 0xFFFF),
+                sub_index=sub_index,
+                instruction_index=instruction_index,
+                family=family,
+            )
+            for left_value, right_value in _sample_paired_signed_i32(
+                current_left=int(left_instruction.time),
+                current_right=int(right_instruction.time),
+                budget=max(2, samples_per_site),
+                rng=rng,
+                field_left="time",
+                field_right="time",
+            ):
+                mutants.append(
+                    Mutant(
+                        f"{family}-sampled-{_value_slug(left_value)}-{_value_slug(right_value)}",
+                        left_site,
+                        _materialized_clone_with_mutated_instructions(
+                            ecl,
+                            {
+                                left_site: RawInstruction(
+                                    **{**left_instruction.__dict__, "time": left_value}
+                                ),
+                                right_site: RawInstruction(
+                                    **{**right_instruction.__dict__, "time": right_value}
+                                ),
+                            },
+                        ),
+                        metadata={
+                            "strategy": "sampled-adjacent-instruction-time-i32-pair",
+                            "family": family,
+                            "field_left": "time",
+                            "field_right": "time",
+                            "left_value": left_value,
+                            "right_value": right_value,
+                            "random_seed": random_seed,
+                            "site_key": _site_key_from_pairs(sites),
+                            "site_slug": _site_slug_from_pairs(sites),
+                            "sites": _site_records_from_pairs(sites),
+                        },
+                    )
+                )
+    return mutants
+
+
+def _sample_adjacent_timeline_time_pair_mutants(
+    ecl: EclFile,
+    *,
+    random_seed: int,
+    samples_per_site: int,
+    family_filters: Sequence[str] | None,
+) -> list[Mutant]:
+    family = "adjacent-timeline-time-cross"
+    if not _family_requested(family, family_filters):
+        return []
+
+    mutants: list[Mutant] = []
+    for instruction_index in range(len(ecl.timeline) - 1):
+        left_instruction = ecl.timeline[instruction_index]
+        right_instruction = ecl.timeline[instruction_index + 1]
+        if abs(int(left_instruction.time) - int(right_instruction.time)) > 32:
+            continue
+        site_indices = (instruction_index, instruction_index + 1)
+        rng = _site_rng(
+            random_seed,
+            opcode=((left_instruction.opcode & 0xFFFF) << 16) | (right_instruction.opcode & 0xFFFF),
+            sub_index=-1,
+            instruction_index=instruction_index,
+            family=family,
+        )
+        for left_value, right_value in _sample_paired_signed_i32(
+            current_left=int(left_instruction.time),
+            current_right=int(right_instruction.time),
+            budget=max(2, samples_per_site),
+            rng=rng,
+            field_left="time",
+            field_right="time",
+        ):
+            mutants.append(
+                Mutant(
+                    f"{family}-sampled-{_value_slug(left_value)}-{_value_slug(right_value)}",
+                    None,
+                    _materialized_clone_with_mutated_timeline_instructions(
+                        ecl,
+                        {
+                            instruction_index: TimelineInstruction(
+                                **{**left_instruction.__dict__, "time": _coerce_i16(left_value)}
+                            ),
+                            instruction_index + 1: TimelineInstruction(
+                                **{**right_instruction.__dict__, "time": _coerce_i16(right_value)}
+                            ),
+                        },
+                    ),
+                    metadata={
+                        "strategy": "sampled-adjacent-timeline-time-i16-pair",
+                        "family": family,
+                        "field_left": "time",
+                        "field_right": "time",
+                        "left_value": _coerce_i16(left_value),
+                        "right_value": _coerce_i16(right_value),
+                        "random_seed": random_seed,
+                        "site_key": _timeline_pair_key(site_indices),
+                        "site_slug": _timeline_pair_key(site_indices),
+                        "sites": _timeline_site_records(site_indices),
+                    },
+                )
+            )
+    return mutants
+
+
 def generate_exploration_mutants(
     ecl: EclFile,
     *,
@@ -1882,9 +2350,33 @@ def generate_exploration_mutants(
                     family_filters=family_filters,
                 )
             )
+    mutants.extend(
+        _sample_timeline_mutants(
+            ecl,
+            random_seed=random_seed,
+            samples_per_site=samples_per_site,
+            family_filters=family_filters,
+        )
+    )
+    mutants.extend(
+        _sample_adjacent_time_pair_mutants(
+            ecl,
+            random_seed=random_seed,
+            samples_per_site=samples_per_site,
+            family_filters=family_filters,
+        )
+    )
+    mutants.extend(
+        _sample_adjacent_timeline_time_pair_mutants(
+            ecl,
+            random_seed=random_seed,
+            samples_per_site=samples_per_site,
+            family_filters=family_filters,
+        )
+    )
 
     deduped: list[Mutant] = []
-    seen: set[tuple[str, tuple[int, int]]] = set()
+    seen: set[tuple[str, tuple[int, int] | None]] = set()
     for mutant in mutants:
         dedupe_key = (mutant.name, mutant.path)
         if dedupe_key in seen:

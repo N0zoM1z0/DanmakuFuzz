@@ -1,0 +1,7 @@
+{
+  "schema": "danmakufuzz-parser-payload-recipe-v1",
+  "type": "score_dat",
+  "input": "reference/retail/game/th06/score.dat",
+  "mutant_name": "first-clrd-character-255",
+  "expected_payload_sha256": "15086860bdb29246bd7469c7c3883efe327741a0b7843a44c27f541cc32f3f30"
+}
