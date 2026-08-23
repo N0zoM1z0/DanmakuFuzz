@@ -34,6 +34,28 @@
         "shot_type": 1,
         "seed": 33734
       }
+    },
+    {
+      "name": "stage6-gensokyo804",
+      "public_replay": "gensokyo-th6-804",
+      "filename": "gensokyo-th6-804.rpy",
+      "stage": 6,
+      "max_ticks": 1800,
+      "mutant_name": "bookmark-cut-tail-i001-t56",
+      "expected_trace_sha256": "baef43afdf6ace2dd046d2eab675183f4852703739576f4303d7058ae896f05c",
+      "expected_terminal_reason": "input-error",
+      "expected_tick": 58,
+      "expected_finding_kinds": [
+        "process-exit",
+        "replay-stable-state-drift",
+        "replay-stable-trace-drift"
+      ],
+      "expected_runtime": {
+        "difficulty": 1,
+        "character": 1,
+        "shot_type": 0,
+        "seed": 41235
+      }
     }
   ]
 }

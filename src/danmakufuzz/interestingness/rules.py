@@ -65,6 +65,69 @@ def _record_frame(record: dict[str, Any]) -> int | None:
     return None
 
 
+ALIGNMENT_MODES = ("row", "game_frame", "stage_vm_pc", "timeline_time")
+
+
+def _alignment_key(record: dict[str, Any], alignment: str) -> object | None:
+    if alignment == "row":
+        return None
+    if alignment == "game_frame":
+        value = record.get("game_frame")
+        return value if isinstance(value, int) else None
+    if alignment == "stage_vm_pc":
+        stage_vm = record.get("stage_vm")
+        if not isinstance(stage_vm, dict):
+            return None
+        loaded = stage_vm.get("loaded")
+        script_time = stage_vm.get("script_time")
+        instruction_index = stage_vm.get("instruction_index")
+        if isinstance(loaded, bool) and isinstance(script_time, int) and isinstance(instruction_index, int):
+            return (loaded, script_time, instruction_index)
+        return None
+    if alignment == "timeline_time":
+        timeline = record.get("ecl_timeline")
+        if not isinstance(timeline, dict):
+            return None
+        timeline_time = timeline.get("time")
+        return timeline_time if isinstance(timeline_time, int) else None
+    raise ValueError(f"unsupported trace alignment: {alignment}")
+
+
+def _baseline_alignment_index(
+    baseline_records: list[dict[str, Any]],
+    *,
+    alignment: str,
+) -> dict[object, dict[str, Any]]:
+    index: dict[object, dict[str, Any]] = {}
+    for record in baseline_records:
+        key = _alignment_key(record, alignment)
+        if key is not None and key not in index:
+            index[key] = record
+    return index
+
+
+def _iter_aligned_record_pairs(
+    case_records: list[dict[str, Any]],
+    baseline_records: list[dict[str, Any]],
+    *,
+    alignment: str,
+) -> Iterator[tuple[int, dict[str, Any], dict[str, Any]]]:
+    if alignment == "row":
+        for line_number, (baseline_record, case_record) in enumerate(zip(baseline_records, case_records), start=1):
+            yield line_number, baseline_record, case_record
+        return
+
+    baseline_index = _baseline_alignment_index(baseline_records, alignment=alignment)
+    for line_number, case_record in enumerate(case_records, start=1):
+        key = _alignment_key(case_record, alignment)
+        if key is None:
+            continue
+        baseline_record = baseline_index.get(key)
+        if baseline_record is None:
+            continue
+        yield line_number, baseline_record, case_record
+
+
 def _timeline_next_time_finding(record: dict[str, Any], *, line_number: int) -> Finding | None:
     timeline = record.get("ecl_timeline")
     if not isinstance(timeline, dict):
@@ -487,6 +550,7 @@ def score_trace_path_with_baseline(
     path: Path,
     *,
     baseline_records: list[dict[str, Any]] | None = None,
+    alignment: str = "row",
     stall_window: int = 240,
     bullet_limit: int = 1024,
     item_limit: int = 256,
@@ -505,6 +569,8 @@ def score_trace_path_with_baseline(
     earlier_tick_margin: int = 32,
     earlier_frame_margin: int = 32,
 ) -> list[Finding]:
+    if alignment not in ALIGNMENT_MODES:
+        raise ValueError(f"unsupported trace alignment: {alignment}")
     standalone_findings: list[Finding] = []
     differential_findings: list[Finding] = []
     reported_anm_kinds: set[str] = set()
@@ -514,6 +580,11 @@ def score_trace_path_with_baseline(
     negative_timeline_next_reported = False
 
     baseline_length = len(baseline_records) if baseline_records is not None else 0
+    baseline_index = (
+        _baseline_alignment_index(baseline_records, alignment=alignment)
+        if baseline_records is not None and alignment != "row"
+        else None
+    )
     baseline_stall = (
         first_stall_event_records(baseline_records, stall_window=stall_window)
         if baseline_records is not None
@@ -613,9 +684,19 @@ def score_trace_path_with_baseline(
         if terminal_reason and terminal_reason not in {"physical-hit", "tick-limit", "input-error"}:
             standalone_findings.append(Finding("unexpected-terminal", str(terminal_reason)))
 
-        if baseline_records is None or line_number > baseline_length:
+        if baseline_records is None:
             continue
-        baseline_record = baseline_records[line_number - 1]
+        if alignment == "row":
+            if line_number > baseline_length:
+                continue
+            baseline_record = baseline_records[line_number - 1]
+        else:
+            key = _alignment_key(case_record, alignment)
+            if key is None or baseline_index is None:
+                continue
+            baseline_record = baseline_index.get(key)
+            if baseline_record is None:
+                continue
         tick = case_record.get("tick")
         tick_label = tick if isinstance(tick, int) else line_number
 
@@ -888,6 +969,7 @@ def score_trace_differential_records(
     case_records: list[dict[str, Any]],
     baseline_records: list[dict[str, Any]],
     *,
+    alignment: str = "row",
     sustained_window: int = 16,
     bullet_drift_threshold: int = 8,
     bullet_strong_drift_threshold: int = 64,
@@ -901,6 +983,8 @@ def score_trace_differential_records(
     point_item_drift_threshold: int = 1,
     shortfall_threshold: int = 32,
 ) -> list[Finding]:
+    if alignment not in ALIGNMENT_MODES:
+        raise ValueError(f"unsupported trace alignment: {alignment}")
     if not baseline_records or not case_records:
         return []
 
@@ -935,7 +1019,11 @@ def score_trace_differential_records(
     saw_life_drift = False
     saw_bomb_drift = False
 
-    for line_number, (baseline_record, case_record) in enumerate(zip(baseline_records, case_records), start=1):
+    for line_number, baseline_record, case_record in _iter_aligned_record_pairs(
+        case_records,
+        baseline_records,
+        alignment=alignment,
+    ):
         tick = case_record.get("tick")
         tick_label = tick if isinstance(tick, int) else line_number
 
@@ -1132,6 +1220,7 @@ def score_trace_differential(
     path: Path,
     baseline_path: Path,
     *,
+    alignment: str = "row",
     sustained_window: int = 16,
     bullet_drift_threshold: int = 8,
     bullet_strong_drift_threshold: int = 64,
@@ -1148,6 +1237,7 @@ def score_trace_differential(
     return score_trace_differential_records(
         load_trace_records(path),
         load_trace_records(baseline_path),
+        alignment=alignment,
         sustained_window=sustained_window,
         bullet_drift_threshold=bullet_drift_threshold,
         bullet_strong_drift_threshold=bullet_strong_drift_threshold,

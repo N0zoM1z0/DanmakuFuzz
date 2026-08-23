@@ -1,0 +1,71 @@
+{
+  "schema": "danmakufuzz-finding-v1",
+  "id": "semantic/ecl-timeline-arg0-retail-crash-stall-basin",
+  "title": "ECL timeline arg0 retail crash/stall basin",
+  "kind": "semantic-retail-ecl-timeline-arg0-crash-stall",
+  "evidence_level": "RETAIL_CRASH_REPRODUCED",
+  "headless_runs": {
+    "pass": 14,
+    "total": 14,
+    "note": "Promoted cases came from headless semantic exploration and were selected by process-signal, timeout, or frame/stall drift."
+  },
+  "retail_runs": {
+    "pass": 16,
+    "total": 16,
+    "confirmed_payloads": 14,
+    "repeat_attempts": 2,
+    "note": "14 primary Wine confirmations plus a 2/2 repeat confirmation for stage5 timeline-arg0=256."
+  },
+  "payload_sha256": [
+    "46357d3a795f3d381c240fcdba6b6c12cd5299a16360cb9660a311b799aa9203",
+    "390c1acc1442162960e14f7295987b14945ec6e1b71d2c43e5d9f0fdd7360005",
+    "b2c3d3821557b8c089ef39b0c68792ac4fd1041bb7ebde08b795f6235ca9b7ab",
+    "808d81ee6f3b36548022e11c3372af29c0d9b05b94fbfa85b1d2fe8b743ec3b9",
+    "44f8b1e6c95c881530b8dd750b01602564fd5fdd22e0408c0253c56b74af6a88",
+    "504d752bc466c2867a41debbbe5fc0d3d0f9ee392ca9f723d9e9618e20a7e086",
+    "2ff0c53669575690e60298536be0f43d32affa7be1e6f9073f793c5488d02304",
+    "b87685c36a799966eb180e4ab608796711344a54c021a4fad5e8c3bc4a03d227",
+    "5f8f64494232f5498d88b249db6e25dcea20ec99bfc6bca7bf0541114ccd3db2",
+    "6f130fdbba378027fde6646edad3daee0ab26d9399b2340ce9efaaf1565122c0",
+    "c27f3cb6dfd2f921a919b898c8085eb6212be581c73503102705c32ee03abc1c",
+    "9c75d6488a1e6984f083d11bb23f99e1dff824041efef89e64079f68317d4b5e",
+    "c199771740d6b6cc75ac3dd26310e74b78347e7c61cfbb9d1a1b49680ce083f2",
+    "7cef80143126b9f2300002e0f8ca86041c075d202f38972f03b00d6658a79855"
+  ],
+  "model_revision": "th06-headless:4a9df00487c44985739da4af0e795f47460d0e00",
+  "retail_exe_sha256": "9f76483c46256804792399296619c1274363c31cd8f1775fafb55106fb852245",
+  "expected_oracle": {
+    "classification": "crash-dialog|retail-frame-stall",
+    "retail_signature_key": "crash-dialog:wine: unhandled page fault on read access to <value> at address <addr> (thread <thread>), starting debugger...|retail-frame-stall"
+  },
+  "triage_status": "confirmed-retail",
+  "evidence": [
+    "artifacts/checks/retail-batch-weird-state-stage2-early/results.jsonl",
+    "artifacts/checks/retail-batch-weird-state-stage3-boss-crash/results.jsonl",
+    "artifacts/checks/retail-batch-weird-state-stage4-crash-families/results.jsonl",
+    "artifacts/checks/retail-batch-weird-state-stage5-crash-families/results.jsonl",
+    "artifacts/checks/retail-batch-more-stage5-timeline-arg0-values/results.jsonl",
+    "artifacts/checks/retail-batch-weird-state-stage6-timeline-arg0/results.jsonl",
+    "artifacts/checks/retail-batch-more-stage6-timeline-arg0-values/results.jsonl",
+    "artifacts/checks/retail-repeat-stage5-timeline-arg0-256-frame-stall/report.json",
+    "artifacts/checks/finding-closure-confirmed-20260823/run.json",
+    "artifacts/checks/finding-closure-confirmed-20260823/ecl-timeline-arg0/summary.json"
+  ],
+  "closure": {
+    "artifact": "artifacts/checks/finding-closure-confirmed-20260823/ecl-timeline-arg0/summary.json",
+    "cases_jsonl": "artifacts/checks/finding-closure-confirmed-20260823/ecl-timeline-arg0/cases.jsonl",
+    "case_count": 14,
+    "single_semantic_delta_cases": 14,
+    "all_rebuilds_match_case_payload": true,
+    "temporal_bisection": "14/14 source traces have baseline divergences located; per-case records include trace-length shortfalls and headless terminal tick markers.",
+    "minimized_delta_keys": [
+      "timeline[0].arg0",
+      "timeline[1].arg0"
+    ]
+  },
+  "notes": [
+    "All promoted Wine confirmations used --compare-clean-baseline; clean baselines reached game-window-live while mutants reached crash-dialog or retail-frame-stall.",
+    "The family spans stages 2-6 and multiple signed/unsigned timeline arg0 values. It should be treated as a retail-positive basin, not as a single minimized root-cause proof.",
+    "Closure analysis reduces every promoted payload to one timeline arg0 semantic cell and rebuilds all 14 payload SHA256s from the original corpus."
+  ]
+}

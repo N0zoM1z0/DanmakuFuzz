@@ -10,7 +10,6 @@ from .pbg3 import Pbg3Archive, sha256_bytes
 from ..repo import REFERENCE_DIR, ensure_directory
 
 
-DEFAULT_RAR: Final = Path("/home/yann/yann/touhou/th06-research/game-exe/th06.rar")
 DEFAULT_OUTPUT_DIR: Final = REFERENCE_DIR / "corpus" / "ecl" / "original"
 DEFAULT_MANIFEST: Final = DEFAULT_OUTPUT_DIR / "manifest.json"
 DEFAULT_ARCHIVE_ENTRY: Final = "th06/紅魔郷ST.DAT"
@@ -84,7 +83,7 @@ def extract_ecl_corpus(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__ or "Extract the TH06 ECL baseline corpus.")
     parser.add_argument("--archive", type=Path)
-    parser.add_argument("--rar", type=Path, default=DEFAULT_RAR)
+    parser.add_argument("--rar", type=Path)
     parser.add_argument("--rar-entry", default=DEFAULT_ARCHIVE_ENTRY)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)

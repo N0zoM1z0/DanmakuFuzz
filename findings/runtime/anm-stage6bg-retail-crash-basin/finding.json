@@ -1,0 +1,59 @@
+{
+  "schema": "danmakufuzz-finding-v1",
+  "id": "runtime/anm-stage6bg-retail-crash-basin",
+  "title": "Stage 6 background ANM retail crash basin",
+  "kind": "runtime-retail-anm-stage6bg-crash",
+  "evidence_level": "RETAIL_CRASH_REPRODUCED",
+  "headless_runs": {
+    "pass": 3,
+    "total": 3,
+    "campaign_total": 27,
+    "interesting_cases": 14,
+    "note": "The promoted cases are the three target hits from the Stage 6 accepted-profile ANM runtime campaign."
+  },
+  "retail_runs": {
+    "pass": 5,
+    "total": 5,
+    "confirmed_payloads": 3,
+    "repeat_attempts": 2,
+    "note": "Three primary Wine confirmations plus a 2/2 repeat confirmation for first-sprite-offset-zero."
+  },
+  "payload_sha256": [
+    "6d4d68a44c06a19b018b000a73c7a43dacc83d316a65c1f50c3d142d920c63ff",
+    "1edd3d4cab15a2a81074f0937caf973b34ea0e0cbc72e74bb328ae3775f53b85",
+    "2642efd137a88bed4b325c383dc7d9085d19fcecc92dd103e93e96a938d79744"
+  ],
+  "model_revision": "th06-headless:4a9df00487c44985739da4af0e795f47460d0e00",
+  "retail_exe_sha256": "9f76483c46256804792399296619c1274363c31cd8f1775fafb55106fb852245",
+  "expected_oracle": {
+    "classification": "crash-dialog",
+    "retail_signature_key": "crash-dialog:wine: unhandled page fault on read access to <value> at address <addr> (thread <thread>), starting debugger..."
+  },
+  "triage_status": "confirmed-retail",
+  "evidence": [
+    "artifacts/checks/anm-runtime-stage6-accepted-full-20260823/target-hits.jsonl",
+    "artifacts/checks/anm-runtime-stage6-accepted-full-20260823/campaign.json",
+    "artifacts/checks/retail-batch-anm-stage6bg-target-hits-20260823/results.jsonl",
+    "artifacts/checks/retail-repeat-anm-stage6bg-first-sprite-offset-zero-crash-20260823/report.json",
+    "artifacts/checks/finding-closure-confirmed-20260823/run.json",
+    "artifacts/checks/finding-closure-confirmed-20260823/anm-stage6bg/summary.json"
+  ],
+  "closure": {
+    "artifact": "artifacts/checks/finding-closure-confirmed-20260823/anm-stage6bg/summary.json",
+    "cases_jsonl": "artifacts/checks/finding-closure-confirmed-20260823/anm-stage6bg/cases.jsonl",
+    "case_count": 3,
+    "single_semantic_delta_cases": 3,
+    "all_rebuilds_match_case_payload": true,
+    "temporal_bisection": "3/3 source traces have baseline divergences located; per-case records include earliest metric divergence and headless drift tick markers.",
+    "minimized_delta_keys": [
+      "sprite_offsets[0].offset",
+      "script_entries[0].id",
+      "script_entries[0].first_instruction"
+    ]
+  },
+  "notes": [
+    "This promotion depends on the retail confirmer accepting ANM semantic results via override_dir/entry_name and patching stg6bg.anm into ST.DAT.",
+    "All three promoted cases crashed at retail address 00405030 after clean baselines reached game-window-live.",
+    "Closure analysis reduces every promoted payload to one ANM table u32 cell and rebuilds all 3 payload SHA256s from the original stg6bg.anm entry."
+  ]
+}

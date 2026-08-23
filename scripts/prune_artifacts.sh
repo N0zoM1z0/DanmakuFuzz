@@ -20,10 +20,25 @@ keep_names=(
   replay-coordinated-corpus-v2
 )
 
+keep_checks=(
+  finding-closure-confirmed-20260823
+)
+
 keep_match() {
   local base="$1"
   local item
   for item in "${keep_names[@]}"; do
+    if [[ "$base" == "$item" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+keep_check_match() {
+  local base="$1"
+  local item
+  for item in "${keep_checks[@]}"; do
     if [[ "$base" == "$item" ]]; then
       return 0
     fi
@@ -39,12 +54,28 @@ fi
 echo "artifact prune mode: $([[ $dry_run -eq 1 ]] && echo dry-run || echo delete)"
 echo "keeping:"
 printf '  %s\n' "${keep_names[@]}"
+printf '  checks/%s\n' "${keep_checks[@]}"
 
 shopt -s nullglob
 for path in "$artifacts_dir"/*; do
   base=$(basename "$path")
   if keep_match "$base"; then
     echo "keep  $path"
+    continue
+  fi
+  if [[ "$base" == "checks" ]]; then
+    echo "enter $path"
+    for check_path in "$path"/*; do
+      check_base=$(basename "$check_path")
+      if keep_check_match "$check_base"; then
+        echo "keep  $check_path"
+        continue
+      fi
+      echo "prune $check_path"
+      if [[ $dry_run -eq 0 ]]; then
+        rm -rf -- "$check_path"
+      fi
+    done
     continue
   fi
   echo "prune $path"
@@ -63,4 +94,3 @@ while IFS= read -r pycache_dir; do
 done < <(find "$repo_root" \
   \( -path "$repo_root/.git" -o -path "$artifacts_dir" \) -prune -o \
   -type d -name '__pycache__' -print)
-

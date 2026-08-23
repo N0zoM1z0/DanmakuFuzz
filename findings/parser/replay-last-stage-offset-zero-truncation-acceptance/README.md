@@ -27,11 +27,11 @@ PYTHONPATH=src python3 findings/parser/replay-last-stage-offset-zero-truncation-
 Current local evidence:
 
 - campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-replay/20260822T-campaign-b/campaign.json`
+  `artifacts/parser-replay/20260822T-campaign-b/campaign.json`
 - per-case result:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-replay/20260822T-campaign-b/0005-last-stage-offset-zero/result.json`
+  `artifacts/parser-replay/20260822T-campaign-b/0005-last-stage-offset-zero/result.json`
 - standalone reproduction summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/parser-replay-last-stage-offset-zero-truncation-acceptance/summary.json`
+  `artifacts/findings/parser-replay-last-stage-offset-zero-truncation-acceptance/summary.json`
 
 Why this one matters:
 

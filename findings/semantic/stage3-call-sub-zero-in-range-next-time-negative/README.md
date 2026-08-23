@@ -52,25 +52,25 @@ PYTHONPATH=src python3 findings/semantic/stage3-call-sub-zero-in-range-next-time
 Current local evidence:
 
 - hotspot basin summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/stage3-jump-call-exploration/summary.json`
+  `artifacts/semantic-hotspots/stage3-jump-call-exploration/summary.json`
 - source exploration case:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-exploration-stage3-jump-call/0016-call-sub-sampled-0-s09-i0015/result.json`
+  `artifacts/tmp-exploration-stage3-jump-call/0016-call-sub-sampled-0-s09-i0015/result.json`
 - dedicated finding rerun:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage3-call-sub-zero-a/summary.json`
+  `artifacts/findings/semantic-stage3-call-sub-zero-a/summary.json`
 - retail confirmation smoke:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage3-call-sub-zero-a/retail/report.json`
+  `artifacts/findings/semantic-stage3-call-sub-zero-a/retail/report.json`
 - dedicated Stage 3 `call-sub` family sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-call-sub-portable-explore-a/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-call-sub-portable-explore-a/summary.json`
 - Stage 3 `call-sub` hotspot basin summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/stage3-call-sub-portable-explore-a/summary.json`
+  `artifacts/semantic-hotspots/stage3-call-sub-portable-explore-a/summary.json`
 - Stage 3 `call-sub` trace basin summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/stage3-call-sub-portable-explore-a/summary.json`
+  `artifacts/semantic-trace-basins/stage3-call-sub-portable-explore-a/summary.json`
 - broader portable core exploration sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-portable-core-explore-c/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-portable-core-explore-c/summary.json`
 - broader portable core hotspot summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/portable-core-explore-c/summary.json`
+  `artifacts/semantic-hotspots/portable-core-explore-c/summary.json`
 - broader portable core trace basin summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/portable-core-explore-c/summary.json`
+  `artifacts/semantic-trace-basins/portable-core-explore-c/summary.json`
 
 Why this one matters:
 

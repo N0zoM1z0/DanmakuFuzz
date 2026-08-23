@@ -1,8 +1,10 @@
 from pathlib import Path
 
+import pytest
+
 from danmakufuzz.ecl_ir.model import EclFile, EclSubroutine, RawInstruction, TimelineInstruction
 from danmakufuzz.ecl_ir.parser import parse_ecl
-from danmakufuzz.ecl_ir.serializer import serialize_ecl
+from danmakufuzz.ecl_ir.serializer import EclSerializeError, serialize_ecl, serialize_ecl_lossless
 
 
 def test_roundtrip_preserves_minimal_shape() -> None:
@@ -30,6 +32,53 @@ def test_roundtrip_preserves_minimal_shape() -> None:
     assert len(reparsed.timeline) == 2
     assert len(reparsed.subs) == 1
     assert reparsed.subs[0].instructions[0].opcode == 35
+    assert serialize_ecl_lossless(reparsed) == blob
+
+
+def test_lossless_serializer_rejects_modified_ir() -> None:
+    ecl = EclFile(
+        sub_count=1,
+        main_count=1,
+        timeline_offsets=(0, 0, 0),
+        timeline=[
+            TimelineInstruction(time=0, arg0=1, opcode=0, size=8, args=b""),
+            TimelineInstruction(time=-1, arg0=0, opcode=0, size=8, args=b""),
+        ],
+        subs=[
+            EclSubroutine(
+                file_offset=0,
+                instructions=[
+                    RawInstruction(time=0, opcode=35, offset_to_next=12, unk8=0, skip_for_difficulty=0, unk_a=0, unk_b=0, args=b""),
+                ],
+            )
+        ],
+    )
+    parsed = parse_ecl(serialize_ecl(ecl))
+    parsed.subs[0].instructions[0].opcode = 36
+    with pytest.raises(EclSerializeError):
+        serialize_ecl_lossless(parsed)
+
+
+def test_canonical_serializer_rejects_secondary_timeline_offsets() -> None:
+    ecl = EclFile(
+        sub_count=1,
+        main_count=1,
+        timeline_offsets=(64, 128, 0),
+        timeline=[
+            TimelineInstruction(time=0, arg0=1, opcode=0, size=8, args=b""),
+            TimelineInstruction(time=-1, arg0=0, opcode=0, size=8, args=b""),
+        ],
+        subs=[
+            EclSubroutine(
+                file_offset=0,
+                instructions=[
+                    RawInstruction(time=0, opcode=35, offset_to_next=12, unk8=0, skip_for_difficulty=0, unk_a=0, unk_b=0, args=b""),
+                ],
+            )
+        ],
+    )
+    with pytest.raises(EclSerializeError):
+        serialize_ecl(ecl)
 
 
 def test_retail_ecl_corpus_parses_when_available() -> None:

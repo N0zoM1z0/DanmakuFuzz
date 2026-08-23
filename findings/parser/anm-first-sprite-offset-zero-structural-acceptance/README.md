@@ -33,16 +33,16 @@ PYTHONPATH=src python3 findings/parser/anm-first-sprite-offset-zero-structural-a
 
 Payload portability is kept as a deterministic recipe:
 
-- [payload_recipe.json](/home/yann/yann/touhou/DanmakuFuzz/findings/parser/anm-first-sprite-offset-zero-structural-acceptance/payload_recipe.json)
+- [payload_recipe.json](findings/parser/anm-first-sprite-offset-zero-structural-acceptance/payload_recipe.json)
 
 Current local evidence:
 
 - campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-anm/20260823T022546Z/campaign.json`
+  `artifacts/parser-anm/20260823T022546Z/campaign.json`
 - per-case result:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-anm/20260823T022546Z/0010-first-sprite-offset-zero/result.json`
+  `artifacts/parser-anm/20260823T022546Z/0010-first-sprite-offset-zero/result.json`
 - standalone reproduction summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/parser-anm-first-sprite-offset-zero-structural-acceptance/summary.json`
+  `artifacts/findings/parser-anm-first-sprite-offset-zero-structural-acceptance/summary.json`
 
 Why this one matters:
 

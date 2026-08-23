@@ -1,82 +1,78 @@
-# Retail confirmation boundary
+# Retail Confirmation
 
-Headless execution is used for search throughput and structured triage.
+Headless traces are where DanmakuFuzz hunts. Retail Wine is where a finding
+earns its name.
 
-Retail Wine confirmation remains required for:
+For TH06 that distinction matters. A fast headless run can expose impossible
+timeline state, replay exhaustion, or resource-loader drift, but the shipped
+game still owns the final oracle for crash and stall claims. Retail
+confirmation is the gate between "interesting danmaku physics" and "this
+breaks the real Scarlet Devil Mansion."
 
-- crash reproduction claims against the shipped game;
-- behavioral divergence claims that depend on original runtime semantics;
-- final bug reports worth carrying forward.
+## Contract
 
-Retail state must stay isolated:
+A retail-positive finding needs:
 
-- dedicated game directory;
-- dedicated Wine prefix and display;
-- dedicated artifact root;
-- no sharing with unrelated solver work.
+- an exact payload recipe or payload hash;
+- an isolated Wine prefix and copied game directory;
+- a clean baseline run for the same route/stage controls;
+- an expected classification such as `crash-dialog` or `retail-frame-stall`;
+- repeat/require gates when the claim is promoted as deterministic;
+- normalized Wine signatures so thread IDs and addresses do not split one
+  crash family into noise.
 
-## Current runner
+Use `retail-error-dialog` and `game-window-blank-static` as control failures,
+not findings. They usually mean the local Wine/Xvfb path failed before TH06
+reached a trustworthy game state.
 
-`danmakufuzz.retail.confirm_case` currently does four things:
+## Single Case
 
-- copies an owned TH06 tree into an isolated artifact-local `game/`;
-- normalizes the TH06 cfg to `32-bit + windowed` so Xvfb/Wine can reach the title screen;
-- restores the local full-unlock `score.dat` when one is present under `全开档/`;
-- rebuilds the stage DAT archive with one replacement `ecldata*.ecl` payload;
-- initializes a dedicated Wine prefix and can either stop at launch or drive Practice mode.
+`danmakufuzz.retail.confirm_case` takes a semantic `result.json`, patches the
+payload into an isolated copy of the owned TH06 tree, drives Practice mode, and
+writes `report.json`.
 
-`danmakufuzz.retail.batch_confirm` is the thin batch wrapper around that single-case runner.
-It discovers `result.json` / `summary.json` inputs, runs them sequentially in isolated
-artifact-local workers, and emits a batch-level `summary.json` plus `results.jsonl`.
-It can also reorder the replay queue by headless interestingness / finding severity,
-filter by finding kind, cap duplicate replays per finding, and load prior retail
-history so already-confirmed cases can be surfaced or skipped before spending more Wine time.
-
-Supported inputs:
-
-- a semantic campaign `result.json`;
-- a minimizer `summary.json`.
-
-Example dry-run from a minimized case:
+Promotion-style run:
 
 ```sh
 PYTHONPATH=src python3 -m danmakufuzz.retail.confirm_case \
-  --result artifacts/semantic-minimized/bullet-sprite-16-s01-i0003/summary.json \
-  --prepare-only \
-  --dry-run
-```
-
-Example isolated launch smoke:
-
-```sh
-PYTHONPATH=src python3 -m danmakufuzz.retail.confirm_case \
-  --result artifacts/semantic-minimized/bullet-sprite-16-s01-i0003/summary.json \
-  --timeout-seconds 3
-```
-
-Example isolated Practice Stage 6 confirmation:
-
-```sh
-PYTHONPATH=src python3 -m danmakufuzz.retail.confirm_case \
-  --result artifacts/semantic/fullstage6-stage6-seed7-ecldata6/0004-bullet-count1-zero-s01-i0003/result.json \
+  --result artifacts/some-campaign/case/result.json \
   --practice-stage 6 \
   --difficulty 3 \
-  --timeout-seconds 20
+  --timeout-seconds 28 \
+  --compare-clean-baseline \
+  --expect-classification crash-dialog \
+  --repeat 3 \
+  --require 3
 ```
 
-Example batch replay over minimized cases, stopping on the first retail crash dialog:
+Each repeat gets its own child artifact directory, game copy, Wine prefix, and
+display. If fewer than `--require` repeats match, the command exits non-zero.
+
+Useful diagnostic knobs:
+
+- `--startup-normalization {auto,gdb,off}` controls the TH06 startup helper.
+- `--xvfb-screen-size WIDTHxHEIGHTxDEPTH` changes the virtual display.
+- `--color-mode-16bit {0,1,255,preserve}` changes the TH06 cfg color byte.
+
+Record these knobs in evidence when they matter. Do not mix them silently into
+a promoted claim.
+
+## Batch Queue
+
+`danmakufuzz.retail.batch_confirm` wraps the same single-case runner across a
+queue of campaign/minimizer outputs:
 
 ```sh
 PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
   --from-minimized \
   --practice-stage 6 \
   --difficulty 3 \
-  --timeout-seconds 20 \
+  --timeout-seconds 28 \
+  --compare-clean-baseline \
   --stop-on-classification crash-dialog
 ```
 
-Example queue preview that keeps only interesting minimized cases and picks at most one
-sample per primary headless finding:
+Preview a queue without launching Wine:
 
 ```sh
 PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
@@ -86,92 +82,56 @@ PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
   --list-only
 ```
 
-Example queue preview that loads prior retail outcomes and skips exact sources
-already confirmed before:
+Use history when rerunning a large queue:
 
 ```sh
 PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
-  --history artifacts/tmp-retail-oracle2-smoke.V69OIr \
-  --skip-known-source \
-  --list-only \
-  --result artifacts/semantic-minimized/bullet-sprite-16-s01-i0003/summary.json
-```
-
-Example queue preview that skips only when history predicts one stable retail
-signature for the source or primary headless finding:
-
-```sh
-PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
-  --history artifacts/tmp-retail-batch-priority-smoke.51UKuj/summary.json \
-  --from-minimized \
-  --interesting-only \
-  --max-per-finding 1 \
+  --history artifacts/checks/previous-retail-batch/summary.json \
   --skip-known-signature \
+  --from-minimized \
+  --interesting-only \
   --list-only
 ```
 
-Each run writes an isolated artifact directory containing:
+The batch output is queue metadata plus one `results.jsonl` row per case. The
+important grouping fields are `classification`, `retail_signature_key`, and the
+headless finding key that led the case into the queue.
 
-- `game/` with patched retail archives;
-- `prefix/` with its Wine state;
-- `wineboot.log`, `wine.log`, and `xvfb.log` when live stage control runs;
-- `control-*.png` screenshots when Practice automation runs;
-- `control-window-census.json`, `control-window-names.txt`, and `control-xwininfo.txt` for post-start retail UI evidence;
-- `report.json` with payload hash, patched archive hash, and launch result.
+## Classifications
 
-The batch wrapper writes a parent artifact directory containing:
+Treat these as promotable when they beat a clean baseline:
 
-- one child artifact directory per case;
-- `results.jsonl` with one summary row per replayed case;
-- `summary.json` with aggregated classification counts, queue metadata, per-case locations,
-  queue-side history annotations, a `headless_retail_matrix` summary keyed by the
-  primary headless finding, and a `retail_signature_matrix` summary keyed by the
-  observed retail crash/live signature after thread/address normalization.
+- `crash-dialog`: Wine exposes a program-error/debugger window after stage
+  entry.
+- `wine-crash-log`: `wine.log` contains an unhandled exception/page-fault
+  signature even when window census is weak.
+- `retail-frame-stall`: Practice mode starts, but the frame-progress oracle
+  fails while the clean baseline advances.
+- `abnormal-exit`: the process exits non-zero without a stronger crash-window
+  signature. This needs review before promotion.
 
-Queue-side history annotations now also include `signature_prediction`, which is
-only marked stable when prior source/finding history points to exactly one retail
-signature candidate.
+Treat these as non-promoting outcomes:
 
-## Current limitation
+- `game-window-live`: the game stayed live.
+- `game-window-static`: the window stayed live but progress was not proven.
+- `game-window-blank-static`: local renderer/control failure.
+- `retail-error-dialog`: usually Direct3D/startup failure unless the clean
+  baseline differs.
+- `retail-baseline-equivalent`: mutant and clean control share the same oracle
+  and screenshots within the equivalence threshold.
 
-TH06 loads stage ECL when a stage starts, not at process startup. The current
-runner now proves all of these for Reimu A Practice:
+## Evidence Shape
 
-- archive rebuilding works;
-- isolation works;
-- Wine can launch the original executable under the prepared environment;
-- deterministic keyboard automation can enter Practice Stage 1--6;
-- patched `ecldata6.ecl` can be carried all the way to Final Stage entry.
+A strong finding directory should carry:
 
-It also has a first-pass retail oracle:
+- `finding.json` with `expected_oracle`, `payload_sha256`, run counts, and
+  triage status;
+- `cases.json` or another compact recipe that can rebuild the payload without
+  old search artifacts;
+- `reproduce.py` that calls `confirm_case` with `--compare-clean-baseline`,
+  `--expect-classification`, and repeat/require gates where appropriate;
+- optional ignored artifact paths for audit history, never as the only way to
+  recreate the payload.
 
-- `game-window-live` when the main TH06 window remains live after the Practice
-  start sequence and observation delay;
-- `game-window-static` when the TH06 window stays live but two post-entry
-  screenshots decode to identical pixels across the probe window;
-- `crash-dialog` when Wine exposes `プログラム エラー` or `Wine Debugger`
-  windows after stage start.
-
-It now carries extra evidence on top of that window layer:
-
-- `wine-crash-log` when `wine.log` shows an unhandled page fault / debugger
-  signature even if the window census alone would be weak;
-- `control.progress_probe` in `report.json` with the probe delay, screenshot
-  paths, decoded-pixel hashes, pixel-change ratio, and the
-  `identical_pixels` verdict;
-- `abnormal-exit` when the retail process exits with a non-zero observed code
-  without a stronger crash-dialog/log signature;
-- `wine_log.primary_signature` plus `wine_log.normalized_primary_signature` in
-  `report.json` for both the raw Wine line and a de-noised grouping key.
-
-It still does not prove:
-
-- generic route automation from Start through Ending;
-- memory-backed retail state sensing;
-- that every interesting case reproduces the same VM/opcode path as headless.
-
-The remaining missing pieces are:
-
-- route-play automation;
-- tighter oracles than window/dialog sensing;
-- richer prioritization around which minimized cases to replay first.
+This is why confirmed TH06 findings now rebuild ECL timeline-arg0 and ANM
+Stage 6 payloads from local owned corpus data before invoking retail.

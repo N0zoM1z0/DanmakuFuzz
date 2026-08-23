@@ -62,17 +62,17 @@ Tracked compact payload reconstruction patches:
 Current local evidence:
 
 - fixed-staging boss exploration grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-boss-grid-b/summary.json`
+  `artifacts/semantic-exploration-grid/20260822T-boss-grid-b/summary.json`
 - focused boss cross-time scout:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-boss-sweep/20260822T-boss-cross-scout-a/summary.json`
+  `artifacts/semantic-boss-sweep/20260822T-boss-cross-scout-a/summary.json`
 - cluster summary for that boss cross-time scout:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-clusters/20260822T-boss-cross-scout-a/summary.json`
+  `artifacts/semantic-clusters/20260822T-boss-cross-scout-a/summary.json`
 - single-family Stage 6 representative finding:
-  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage6-life-callback-threshold-next-time-zero-tail/README.md`
+  `findings/semantic/stage6-life-callback-threshold-next-time-zero-tail/README.md`
 - dedicated cross-family reproducer rerun:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-next-time-zero-cross-family-basin/summary.json`
+  `artifacts/findings/semantic-stage6-next-time-zero-cross-family-basin/summary.json`
 - August 22, 2026 retail smoke for `boss-life-count-72`:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-next-time-zero-cross-family-basin/retail/report.json`
+  `artifacts/findings/semantic-stage6-next-time-zero-cross-family-basin/retail/report.json`
 
 Why this one matters:
 

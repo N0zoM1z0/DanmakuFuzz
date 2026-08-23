@@ -59,14 +59,14 @@ Tracked compact payload patches:
 Current local evidence:
 
 - short scout result that first exposed the missed case:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-time-cross-scout-a/ecldata1/0001-shoot-interval-sampled-2147483602-s00-i0007/result.json`
+  `artifacts/semantic-family-sweep/20260822T-time-cross-scout-a/ecldata1/0001-shoot-interval-sampled-2147483602-s00-i0007/result.json`
 - exact 1800-tick basin map:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/20260823T-stage1-site-s00-i0007-a/summary.json`
+  `artifacts/semantic-trace-basins/20260823T-stage1-site-s00-i0007-a/summary.json`
 - retail launch/progress smoke for the `shoot-interval=2147483602`
   representative:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage1-shoot-interval-cross-value-delayed-freeze-basin/retail/report.json`
+  `artifacts/findings/semantic-stage1-shoot-interval-cross-value-delayed-freeze-basin/retail/report.json`
 - earlier sibling finding on the same site but a different basin:
-  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage1-shoot-interval-one-bullet-storm/README.md`
+  `findings/semantic/stage1-shoot-interval-one-bullet-storm/README.md`
 
 Why this one matters:
 

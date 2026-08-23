@@ -30,11 +30,11 @@ PYTHONPATH=src python3 findings/semantic/stage2-shoot-interval-one-bullet-flood/
 Current local evidence:
 
 - source semantic case:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-shoot-interval-long-all/ecldata2/0002-shoot-interval-one-s00-i0011/result.json`
+  `artifacts/semantic-family-sweep/20260822T-shoot-interval-long-all/ecldata2/0002-shoot-interval-one-s00-i0011/result.json`
 - family sweep summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-shoot-interval-long-all/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-shoot-interval-long-all/summary.json`
 - retail confirmation smoke:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage2-shoot-interval-one-bullet-flood-retail-smoke/retail/report.json`
+  `artifacts/findings/semantic-stage2-shoot-interval-one-bullet-flood-retail-smoke/retail/report.json`
 
 Why this one matters:
 

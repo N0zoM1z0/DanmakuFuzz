@@ -75,7 +75,7 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_cluster \
 
 The representative pattern cluster is in:
 
-- `/home/yann/yann/touhou/DanmakuFuzz/artifacts/replay-payload-borrow-focus-v1/recluster-v2/summary.json`
+- `artifacts/replay-payload-borrow-focus-v1/recluster-v2/summary.json`
 
 Look for:
 

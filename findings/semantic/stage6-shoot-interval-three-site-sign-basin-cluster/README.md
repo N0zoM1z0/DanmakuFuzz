@@ -87,13 +87,13 @@ Tracked compact payload patches:
 Current local evidence:
 
 - source smoke campaign:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/_smoke/20260823-stage6-shoot-interval-new-sampler/campaign.json`
+  `artifacts/_smoke/20260823-stage6-shoot-interval-new-sampler/campaign.json`
 - hotspot summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/20260823T010443Z/summary.json`
+  `artifacts/semantic-hotspots/20260823T010443Z/summary.json`
 - exact basin harvest:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/_smoke/20260823-stage6-shoot-interval-new-sampler-basin/summary.json`
+  `artifacts/_smoke/20260823-stage6-shoot-interval-new-sampler-basin/summary.json`
 - retail smoke for `sub=2, instruction=8, shoot-interval=-1`:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-shoot-interval-three-site-sign-basin-cluster/retail/report.json`
+  `artifacts/findings/semantic-stage6-shoot-interval-three-site-sign-basin-cluster/retail/report.json`
 
 Why this one matters:
 

@@ -1,0 +1,31 @@
+{
+  "schema": "danmakufuzz-finding-v1",
+  "id": "parser/pbg3-entry-map-metamorphic-equivalence",
+  "title": "PBG3 archive entry-map metamorphic equivalence",
+  "kind": "parser-metamorphic-format-equivalence",
+  "evidence_level": "FORMAT_CHARACTERIZATION",
+  "headless_runs": {
+    "pass": 0,
+    "total": 0,
+    "note": "Parser-only metamorphic characterization."
+  },
+  "retail_runs": {
+    "pass": 0,
+    "total": 0
+  },
+  "payload_sha256": null,
+  "model_revision": null,
+  "retail_exe_sha256": null,
+  "expected_oracle": {
+    "classification": "accepted",
+    "metamorphic_relation": "archive-entry-map-equivalence"
+  },
+  "triage_status": "format-observation",
+  "evidence": [
+    "artifacts/checks/pbg3-metamorphic-unique-dat-20260823/campaign.json"
+  ],
+  "notes": [
+    "Across 6 unique retail TH06 PBG3 archives, 66 generated archive-level transformations were accepted and preserved the filename-to-extracted-payload map.",
+    "This is a metamorphic format characterization, not a bug candidate. Full per-payload hashes are recorded in the campaign summary files."
+  ]
+}

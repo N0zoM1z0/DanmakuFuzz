@@ -36,16 +36,16 @@ PYTHONPATH=src python3 findings/parser/score-dat-first-clrd-character-255-loaded
 Payload portability is kept as a deterministic recipe rather than a committed
 binary blob:
 
-- [payload_recipe.json](/home/yann/yann/touhou/DanmakuFuzz/findings/parser/score-dat-first-clrd-character-255-loaded-drift/payload_recipe.json)
+- [payload_recipe.json](findings/parser/score-dat-first-clrd-character-255-loaded-drift/payload_recipe.json)
 
 Current local evidence:
 
 - campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-score-dat/20260823T022534Z/campaign.json`
+  `artifacts/parser-score-dat/20260823T022534Z/campaign.json`
 - per-case result:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-score-dat/20260823T022534Z/0009-first-clrd-character-255/result.json`
+  `artifacts/parser-score-dat/20260823T022534Z/0009-first-clrd-character-255/result.json`
 - standalone reproduction summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/parser-score-dat-first-clrd-character-255-loaded-drift/summary.json`
+  `artifacts/findings/parser-score-dat-first-clrd-character-255-loaded-drift/summary.json`
 
 Why this one matters:
 

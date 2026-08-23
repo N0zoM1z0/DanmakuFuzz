@@ -45,15 +45,15 @@ Tracked compact payload patches:
 Current local evidence:
 
 - source exploration grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-core-grid-c/summary.json`
+  `artifacts/semantic-exploration-grid/20260822T-core-grid-c/summary.json`
 - exact 1800-tick confirmation rerun:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exact-rerun/20260822T-stage23-recheck-a/summary.jsonl`
+  `artifacts/semantic-exact-rerun/20260822T-stage23-recheck-a/summary.jsonl`
 - retail launch/progress smoke for the `shoot-interval=192` representative:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage3-shoot-interval-cross-value-tail-extension-retail-a/retail/report.json`
+  `artifacts/findings/semantic-stage3-shoot-interval-cross-value-tail-extension-retail-a/retail/report.json`
 - related Stage 3 structural findings:
-  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage3-call-sub-zero-in-range-next-time-negative/README.md`
+  `findings/semantic/stage3-call-sub-zero-in-range-next-time-negative/README.md`
   and
-  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage3-jump-offset-zero-route-warp/README.md`
+  `findings/semantic/stage3-jump-offset-zero-route-warp/README.md`
 
 Why this one matters:
 

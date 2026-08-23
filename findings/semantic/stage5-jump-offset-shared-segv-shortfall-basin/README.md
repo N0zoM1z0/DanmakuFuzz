@@ -77,11 +77,11 @@ Tracked compact payload patches:
 Current local evidence:
 
 - source exploration grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-core-grid-f/summary.json`
+  `artifacts/semantic-exploration-grid/20260822T-core-grid-f/summary.json`
 - hotspot summary for that grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/20260822T-core-grid-f/summary.json`
+  `artifacts/semantic-hotspots/20260822T-core-grid-f/summary.json`
 - related older shared route-warp basin:
-  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage5-jump-offset-shared-route-warp-basin/README.md`
+  `findings/semantic/stage5-jump-offset-shared-route-warp-basin/README.md`
 
 Current interpretation:
 

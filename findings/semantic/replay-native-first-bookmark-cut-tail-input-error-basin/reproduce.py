@@ -20,10 +20,9 @@ from danmakufuzz.semantic.replay_desync_campaign import run_replay_desync_campai
 
 
 FINDING_NAME = "semantic/replay-native-first-bookmark-cut-tail-input-error-basin"
-EXPECTED_MUTANT_NAME = "bookmark-cut-tail-i001-t1"
-EXPECTED_FINDING_KINDS = {"process-exit", "replay-stable-trace-drift"}
-EXPECTED_TERMINAL_REASON = "input-error"
-EXPECTED_TICK = 3
+DEFAULT_EXPECTED_FINDING_KINDS = {"process-exit", "replay-stable-trace-drift"}
+DEFAULT_EXPECTED_TERMINAL_REASON = "input-error"
+DEFAULT_EXPECTED_TICK = 3
 
 
 def _here() -> Path:
@@ -91,8 +90,7 @@ def _assert_runtime(actual: dict[str, object], expected: dict[str, object], *, l
 def main() -> int:
     args = parse_args()
     config = _load_cases()
-    if str(config.get("mutant_name")) != EXPECTED_MUTANT_NAME:
-        raise RuntimeError("cases.json mutant_name drifted")
+    default_mutant_name = str(config.get("mutant_name") or "bookmark-cut-tail-i001-t1")
     cases = config.get("cases")
     if not isinstance(cases, list) or not cases:
         raise RuntimeError("cases.json is missing non-empty cases")
@@ -116,6 +114,16 @@ def main() -> int:
         if not replay_path.is_file():
             raise FileNotFoundError(f"missing replay after fetch: {replay_path}")
         case_artifact_dir = artifact_dir / case_name
+        expected_mutant_name = str(case.get("mutant_name") or default_mutant_name)
+        expected_terminal_reason = str(case.get("expected_terminal_reason") or DEFAULT_EXPECTED_TERMINAL_REASON)
+        expected_tick = int(case.get("expected_tick", DEFAULT_EXPECTED_TICK))
+        raw_expected_kinds = case.get("expected_finding_kinds")
+        if raw_expected_kinds is None:
+            expected_finding_kinds = set(DEFAULT_EXPECTED_FINDING_KINDS)
+        elif isinstance(raw_expected_kinds, list):
+            expected_finding_kinds = {str(kind) for kind in raw_expected_kinds}
+        else:
+            raise RuntimeError(f"{case_name} expected_finding_kinds is not a list")
         report = run_replay_desync_campaign(
             artifact_dir=case_artifact_dir,
             input_path=replay_path.resolve(),
@@ -136,7 +144,7 @@ def main() -> int:
             samples_per_site=int(config["samples_per_site"]),
             limit=1,
             mutant_profile=str(config["mutant_profile"]),
-            name_filters=[EXPECTED_MUTANT_NAME],
+            name_filters=[expected_mutant_name],
             emit_stdout=False,
         )
         summary_path = Path(str(report["summary"]))
@@ -144,17 +152,17 @@ def main() -> int:
         if len(rows) != 1:
             raise RuntimeError(f"{case_name} expected exactly one replay mutant row, got {len(rows)}")
         row = rows[0]
-        if row.get("mutant_name") != EXPECTED_MUTANT_NAME:
+        if row.get("mutant_name") != expected_mutant_name:
             raise RuntimeError(
-                f"{case_name} mutant drifted: expected {EXPECTED_MUTANT_NAME}, got {row.get('mutant_name')}"
+                f"{case_name} mutant drifted: expected {expected_mutant_name}, got {row.get('mutant_name')}"
             )
         findings = row.get("findings")
         if not isinstance(findings, list):
             raise RuntimeError(f"{case_name} findings missing")
         finding_kinds = {str(finding.get('kind')) for finding in findings if isinstance(finding, dict)}
-        if not EXPECTED_FINDING_KINDS.issubset(finding_kinds):
+        if not expected_finding_kinds.issubset(finding_kinds):
             raise RuntimeError(
-                f"{case_name} findings drifted: expected at least {sorted(EXPECTED_FINDING_KINDS)}, got {sorted(finding_kinds)}"
+                f"{case_name} findings drifted: expected at least {sorted(expected_finding_kinds)}, got {sorted(finding_kinds)}"
             )
         runtime = row.get("runtime")
         if not isinstance(runtime, dict):
@@ -169,13 +177,13 @@ def main() -> int:
         if not trace_rows:
             raise RuntimeError(f"{case_name} trace is empty")
         tail = trace_rows[-1]
-        if tail.get("terminal_reason") != EXPECTED_TERMINAL_REASON:
+        if tail.get("terminal_reason") != expected_terminal_reason:
             raise RuntimeError(
-                f"{case_name} terminal_reason drifted: expected {EXPECTED_TERMINAL_REASON!r}, got {tail.get('terminal_reason')!r}"
+                f"{case_name} terminal_reason drifted: expected {expected_terminal_reason!r}, got {tail.get('terminal_reason')!r}"
             )
-        if tail.get("tick") != EXPECTED_TICK:
+        if tail.get("tick") != expected_tick:
             raise RuntimeError(
-                f"{case_name} tail tick drifted: expected {EXPECTED_TICK}, got {tail.get('tick')}"
+                f"{case_name} tail tick drifted: expected {expected_tick}, got {tail.get('tick')}"
             )
         actual_trace_sha = str(row["run_a"]["trace_sha256"])
         expected_trace_sha = str(case["expected_trace_sha256"])
@@ -193,6 +201,7 @@ def main() -> int:
                 "replay": str(replay_path),
                 "stage": case["stage"],
                 "mutant_name": row["mutant_name"],
+                "payload_sha256": row["payload_sha256"],
                 "trace_sha256": actual_trace_sha,
                 "terminal_reason": tail.get("terminal_reason"),
                 "tick": tail.get("tick"),
@@ -203,7 +212,7 @@ def main() -> int:
 
     summary = {
         "finding": FINDING_NAME,
-        "mutant_name": EXPECTED_MUTANT_NAME,
+        "default_mutant_name": default_mutant_name,
         "cases": reports,
     }
     summary_path = artifact_dir / "summary.json"

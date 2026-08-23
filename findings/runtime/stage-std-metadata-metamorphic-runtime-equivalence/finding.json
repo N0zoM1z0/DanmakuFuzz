@@ -1,0 +1,43 @@
+{
+  "schema": "danmakufuzz-finding-v1",
+  "id": "runtime/stage-std-metadata-metamorphic-runtime-equivalence",
+  "title": "Stage STD metadata metamorphic runtime equivalence",
+  "kind": "runtime-metamorphic-equivalence",
+  "evidence_level": "HEADLESS_REPRODUCED",
+  "headless_runs": {
+    "pass": 49,
+    "total": 49,
+    "note": "Seven metadata/unknown-field transforms were trace-equivalent across stage1.std through stage7.std."
+  },
+  "retail_runs": {
+    "pass": 0,
+    "total": 0
+  },
+  "payload_sha256": null,
+  "model_revision": "th06-headless:4a9df00487c44985739da4af0e795f47460d0e00",
+  "retail_exe_sha256": null,
+  "expected_oracle": {
+    "classification": "equivalent",
+    "metamorphic_relations": [
+      "stage-std-unknown-header-field-equivalence",
+      "stage-std-display-metadata-headless-equivalence",
+      "stage-std-cstring-tail-equivalence",
+      "stage-std-audio-path-headless-equivalence"
+    ]
+  },
+  "triage_status": "format-observation",
+  "evidence": [
+    "artifacts/checks/stage-std-metamorphic-runtime-stage1-20260823/campaign.json",
+    "artifacts/checks/stage-std-metamorphic-runtime-stage2-20260823/campaign.json",
+    "artifacts/checks/stage-std-metamorphic-runtime-stage3-20260823/campaign.json",
+    "artifacts/checks/stage-std-metamorphic-runtime-stage4-20260823/campaign.json",
+    "artifacts/checks/stage-std-metamorphic-runtime-stage5-20260823/campaign.json",
+    "artifacts/checks/stage-std-metamorphic-runtime-stage6-20260823/campaign.json",
+    "artifacts/checks/stage-std-metamorphic-runtime-stage7-20260823/campaign.json"
+  ],
+  "notes": [
+    "The checked transforms cover RawStageHeader.unk_c, stage display name, song display names, song paths, and bytes after C-string NUL terminators.",
+    "Song path mutation is only claimed as headless runtime equivalence; retail audio loading may be a separate oracle.",
+    "This is a negative-control observation, not a bug candidate."
+  ]
+}

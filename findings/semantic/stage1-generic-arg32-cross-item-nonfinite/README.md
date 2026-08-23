@@ -59,6 +59,6 @@ Tracked payload patch:
 Current local evidence:
 
 - campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic/campaign-stage1-seed7-ecldata1/summary.jsonl`
+  `artifacts/semantic/campaign-stage1-seed7-ecldata1/summary.jsonl`
 - per-case result:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic/campaign-stage1-seed7-ecldata1/0008-generic-arg32-cross-o0-o1-sampled-neg3692-64-s00-i0003/result.json`
+  `artifacts/semantic/campaign-stage1-seed7-ecldata1/0008-generic-arg32-cross-o0-o1-sampled-neg3692-64-s00-i0003/result.json`

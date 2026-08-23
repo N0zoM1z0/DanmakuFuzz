@@ -50,15 +50,15 @@ Tracked compact payload patches:
 Current local evidence:
 
 - earlier single-value predecessor:
-  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage6-bullet-count2-zero-item-flood/README.md`
+  `findings/semantic/stage6-bullet-count2-zero-item-flood/README.md`
 - older long-run source case for `bullet-count2=0`:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-bullet-count-long-all/ecldata6/0002-bullet-count2-zero-s01-i0003/result.json`
+  `artifacts/semantic-family-sweep/20260822T-bullet-count-long-all/ecldata6/0002-bullet-count2-zero-s01-i0003/result.json`
 - widened `bullet-count2` family sweep containing `2147483596`:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-bullet-count2-explore-a/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-bullet-count2-explore-a/summary.json`
 - widened `bullet-count2` hotspot summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/bullet-count2-explore-a/summary.json`
+  `artifacts/semantic-hotspots/bullet-count2-explore-a/summary.json`
 - widened `bullet-count2` trace basin summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/bullet-count2-explore-a/summary.json`
+  `artifacts/semantic-trace-basins/bullet-count2-explore-a/summary.json`
 
 Why this one matters:
 

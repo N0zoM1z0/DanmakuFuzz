@@ -63,13 +63,13 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.resource_coordination_campaign \
 
 Payload selection is recorded in:
 
-- [payload_recipe.json](/home/yann/yann/touhou/DanmakuFuzz/findings/runtime/anm-stage7-triad-runtime-sigsegv-basin/payload_recipe.json)
+- [payload_recipe.json](findings/runtime/anm-stage7-triad-runtime-sigsegv-basin/payload_recipe.json)
 
 Current local evidence:
 
 - campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-resource-coordination-smoke/campaign.json`
+  `artifacts/tmp-resource-coordination-smoke/campaign.json`
 - triad case summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-resource-coordination-smoke/0001-anm-triad-first-sprite-offset-zero/result.json`
+  `artifacts/tmp-resource-coordination-smoke/0001-anm-triad-first-sprite-offset-zero/result.json`
 - single-entry Stage 7 sibling:
-  `/home/yann/yann/touhou/DanmakuFuzz/findings/runtime/anm-stage7enm-runtime-sigsegv-basin/README.md`
+  `findings/runtime/anm-stage7enm-runtime-sigsegv-basin/README.md`

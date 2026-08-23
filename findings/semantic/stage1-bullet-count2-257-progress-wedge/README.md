@@ -40,13 +40,13 @@ artifact output.
 Current local evidence:
 
 - source semantic case:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-portable-core-explore-d/ecldata1/0003-bullet-count2-sampled-257-s01-i0005/result.json`
+  `artifacts/semantic-family-sweep/20260822T-portable-core-explore-d/ecldata1/0003-bullet-count2-sampled-257-s01-i0005/result.json`
 - widened portable core sweep summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-portable-core-explore-d/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-portable-core-explore-d/summary.json`
 - widened portable core hotspot summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/portable-core-explore-d/summary.json`
+  `artifacts/semantic-hotspots/portable-core-explore-d/summary.json`
 - widened portable core trace basin summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/portable-core-explore-d/summary.json`
+  `artifacts/semantic-trace-basins/portable-core-explore-d/summary.json`
 
 Why this one matters:
 

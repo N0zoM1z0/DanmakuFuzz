@@ -42,13 +42,13 @@ Tracked compact payload patches:
 Current local evidence:
 
 - widened `bullet-count2` family sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-bullet-count2-explore-a/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-bullet-count2-explore-a/summary.json`
 - widened `bullet-count2` hotspot summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/bullet-count2-explore-a/summary.json`
+  `artifacts/semantic-hotspots/bullet-count2-explore-a/summary.json`
 - widened `bullet-count2` trace basin summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/bullet-count2-explore-a/summary.json`
+  `artifacts/semantic-trace-basins/bullet-count2-explore-a/summary.json`
 - narrower single-value predecessor:
-  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage1-bullet-count2-257-progress-wedge/README.md`
+  `findings/semantic/stage1-bullet-count2-257-progress-wedge/README.md`
 
 Why this one matters:
 

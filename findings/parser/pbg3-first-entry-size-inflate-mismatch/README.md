@@ -38,11 +38,11 @@ the multi-megabyte mutated archive blob in Git.
 Current local evidence:
 
 - full campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-pbg3/20260822T-full-a/campaign.json`
+  `artifacts/parser-pbg3/20260822T-full-a/campaign.json`
 - per-case result:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-pbg3/20260822T-full-a/0010-first-entry-size-inflate/result.json`
+  `artifacts/parser-pbg3/20260822T-full-a/0010-first-entry-size-inflate/result.json`
 - standalone reproduction summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/parser-pbg3-first-entry-size-inflate-mismatch/summary.json`
+  `artifacts/findings/parser-pbg3-first-entry-size-inflate-mismatch/summary.json`
 
 Why this one matters:
 

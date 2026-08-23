@@ -3,24 +3,31 @@
 Observed on August 23, 2026.
 
 This finding comes from the replay-native semantic lane rather than from ECL or
-raw action mutation alone. The trigger is the same replay-native mutator across
-two very different public TH06 replays:
+raw action mutation alone. The trigger is the same replay-native mutator family
+across several public TH06 replays:
 
-- mutant: `bookmark-cut-tail-i001-t1`
+- mutant family: first non-initial `bookmark-cut-tail-i001-*`
 - effect: keep the initial replay bookmark, cut the tail at the first
   non-initial bookmark, then terminate the compressed replay stream
 
-On both:
+Tracked cases:
 
-- `fairysvoice-th6-001.rpy` Stage 1
-- `fairysvoice-th6-002.rpy` Stage 7 / Extra
+- `fairysvoice-th6-001.rpy` Stage 1: `bookmark-cut-tail-i001-t1`;
+- `fairysvoice-th6-002.rpy` Stage 7 / Extra: `bookmark-cut-tail-i001-t1`;
+- `gensokyo-th6-804.rpy` Stage 6: `bookmark-cut-tail-i001-t56`.
 
-the mutated replay collapses into the same tiny basin:
+The first two cases collapse into the same tiny basin:
 
 - headless action stream exhausts at tick `2`
 - final trace tick is `3`
 - terminal reason becomes `input-error`
 - process exits with code `1`
+
+The Stage 6 `gensokyo-th6-804` case cuts at the first non-initial bookmark
+frame `56`; it exits deterministically with the same `input-error` terminal
+reason at tick `58`. The state oracle reports the first divergence at line `58`
+with `game_frame`, `stage_vm.script_time`, `ecl_timeline.time`, and ANM script
+execution counters aligned to the early input exhaustion.
 
 This matters because it is a replay-structure finding, not just “change the
 expanded action stream and something different happens.” A tiny edit to the
@@ -70,6 +77,8 @@ Tracked reconstruction metadata:
 Current local evidence:
 
 - Stage 1 campaign:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-replay-native-stage1-v2/campaign.json`
+  `artifacts/tmp-replay-native-stage1-v2/campaign.json`
 - Stage 7 campaign:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-replay-native-stage7-v2/campaign.json`
+  `artifacts/tmp-replay-native-stage7-v2/campaign.json`
+- Stage 6 coordinated sweep:
+  `artifacts/checks/replay-desync-public-gensokyo804-stage6-coordinated-20260823/campaign.json`

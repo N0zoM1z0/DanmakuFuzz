@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 from ..headless.actions import action_token_to_input_mask, parse_actions_file, serialize_mask_actions
 from ..headless.baseline import (
@@ -214,6 +216,224 @@ def _replay_stable_trace_findings(
     return []
 
 
+TRACE_STATE_SCALAR_FIELDS = (
+    "terminal_reason",
+    "supervisor_state",
+    "stage",
+    "game_frame",
+    "rng_generation",
+    "lives",
+    "bombs",
+    "score",
+    "power",
+    "point_items_stage",
+    "point_items_total",
+)
+TRACE_STATE_MAPPING_FIELDS = {
+    "player": ("x", "y", "state"),
+    "stage_vm": (
+        "loaded",
+        "script_time",
+        "instruction_index",
+        "unpause_flag",
+        "spellcard_state",
+        "spellcard_ticks",
+    ),
+    "ecl_timeline": ("time", "next_time"),
+    "boss_ui": ("present", "ecl_lives", "spell_seconds", "health1", "health2", "opacity"),
+    "spellcard": ("active", "capturing", "used_bomb", "idx", "capture_score"),
+    "anm_metrics": (
+        "load_anm_calls",
+        "load_anm_failures",
+        "texture_load_failures",
+        "alpha_texture_load_failures",
+        "texture_size_mismatches",
+        "sprites_loaded",
+        "suspicious_sprites_loaded",
+        "scripts_loaded",
+        "set_active_sprite_failures",
+        "execute_script_calls",
+        "script_instruction_steps",
+        "vm_non_finite",
+        "suspicious_sprite_draws",
+    ),
+}
+
+
+def _entity_count(record: dict[str, Any], key: str) -> int:
+    value = record.get(key)
+    if isinstance(value, list):
+        return len(value)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return 0
+
+
+def _trace_state_projection(record: dict[str, Any]) -> dict[str, Any]:
+    projected: dict[str, Any] = {
+        key: record.get(key)
+        for key in TRACE_STATE_SCALAR_FIELDS
+        if key in record
+    }
+    projected["entity_counts"] = {
+        "items": _entity_count(record, "items"),
+        "bullets": _entity_count(record, "bullets"),
+        "lasers": _entity_count(record, "lasers"),
+        "enemies": _entity_count(record, "enemies"),
+        "enemy_count": record.get("enemy_count"),
+    }
+    for key, fields in TRACE_STATE_MAPPING_FIELDS.items():
+        value = record.get(key)
+        if isinstance(value, dict):
+            projected[key] = {field: value.get(field) for field in fields if field in value}
+    return projected
+
+
+def _trace_state_signature(records: list[dict[str, Any]]) -> str:
+    digest = hashlib.sha256()
+    for record in records:
+        digest.update(
+            json.dumps(
+                _trace_state_projection(record),
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _diff_paths(left: Any, right: Any, *, prefix: str = "") -> list[str]:
+    if isinstance(left, dict) and isinstance(right, dict):
+        keys = sorted(set(left) | set(right))
+        paths: list[str] = []
+        for key in keys:
+            child_prefix = f"{prefix}.{key}" if prefix else str(key)
+            paths.extend(_diff_paths(left.get(key), right.get(key), prefix=child_prefix))
+        return paths
+    if left != right:
+        return [prefix or "$"]
+    return []
+
+
+def _first_state_divergence(
+    baseline_records: list[dict[str, Any]],
+    case_records: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    for line_number, (baseline_record, case_record) in enumerate(zip(baseline_records, case_records), start=1):
+        baseline_projection = _trace_state_projection(baseline_record)
+        case_projection = _trace_state_projection(case_record)
+        fields = _diff_paths(baseline_projection, case_projection)
+        if fields:
+            return {
+                "line": line_number,
+                "baseline_tick": baseline_record.get("tick"),
+                "case_tick": case_record.get("tick"),
+                "baseline_game_frame": baseline_record.get("game_frame"),
+                "case_game_frame": case_record.get("game_frame"),
+                "fields": fields[:24],
+                "field_count": len(fields),
+                "baseline": baseline_projection,
+                "case": case_projection,
+            }
+    if len(baseline_records) != len(case_records):
+        return {
+            "line": min(len(baseline_records), len(case_records)) + 1,
+            "baseline_length": len(baseline_records),
+            "case_length": len(case_records),
+            "fields": ["trace_length"],
+            "field_count": 1,
+        }
+    return None
+
+
+def _tail_state_delta(
+    baseline_records: list[dict[str, Any]],
+    case_records: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if not baseline_records or not case_records:
+        return None
+    baseline_projection = _trace_state_projection(baseline_records[-1])
+    case_projection = _trace_state_projection(case_records[-1])
+    fields = _diff_paths(baseline_projection, case_projection)
+    if not fields:
+        return None
+    return {
+        "baseline_tick": baseline_records[-1].get("tick"),
+        "case_tick": case_records[-1].get("tick"),
+        "baseline_game_frame": baseline_records[-1].get("game_frame"),
+        "case_game_frame": case_records[-1].get("game_frame"),
+        "fields": fields[:32],
+        "field_count": len(fields),
+        "baseline": baseline_projection,
+        "case": case_projection,
+    }
+
+
+def _trace_state_oracle(
+    *,
+    baseline_records: list[dict[str, Any]] | None,
+    run_a: dict[str, object],
+    run_b: dict[str, object],
+) -> dict[str, Any] | None:
+    if baseline_records is None:
+        return None
+    trace_a_path = Path(str(run_a.get("trace", "")))
+    trace_b_path = Path(str(run_b.get("trace", "")))
+    if not trace_a_path.is_file() or not trace_b_path.is_file():
+        return None
+    records_a = load_trace_records(trace_a_path)
+    records_b = load_trace_records(trace_b_path)
+    baseline_signature = _trace_state_signature(baseline_records)
+    signature_a = _trace_state_signature(records_a)
+    signature_b = _trace_state_signature(records_b)
+    stable = signature_a == signature_b
+    diverged = signature_a != baseline_signature
+    return {
+        "schema": "danmakufuzz-replay-trace-state-oracle-v1",
+        "stable": stable,
+        "diverged_from_baseline": diverged,
+        "baseline_state_sha256": baseline_signature,
+        "run_a_state_sha256": signature_a,
+        "run_b_state_sha256": signature_b,
+        "record_counts": {
+            "baseline": len(baseline_records),
+            "run_a": len(records_a),
+            "run_b": len(records_b),
+        },
+        "first_divergence": _first_state_divergence(baseline_records, records_a) if diverged else None,
+        "tail_delta": _tail_state_delta(baseline_records, records_a) if diverged else None,
+        "repeat_divergence": _first_state_divergence(records_a, records_b) if not stable else None,
+    }
+
+
+def _replay_state_findings(trace_oracle: dict[str, Any] | None) -> list[Finding]:
+    if not trace_oracle:
+        return []
+    if not trace_oracle.get("stable") or not trace_oracle.get("diverged_from_baseline"):
+        return []
+    first = trace_oracle.get("first_divergence")
+    if not isinstance(first, dict):
+        return []
+    fields = first.get("fields")
+    field_text = ",".join(str(field) for field in fields[:8]) if isinstance(fields, list) else ""
+    return [
+        Finding(
+            "replay-stable-state-drift",
+            " ".join(
+                [
+                    f"line={first.get('line')}",
+                    f"baseline_tick={first.get('baseline_tick')}",
+                    f"case_tick={first.get('case_tick')}",
+                    f"baseline_game_frame={first.get('baseline_game_frame')}",
+                    f"case_game_frame={first.get('case_game_frame')}",
+                    f"fields={field_text}",
+                ]
+            ),
+        )
+    ]
+
+
 def _run_mutant(
     mutant: ReplayInputMutant,
     *,
@@ -311,6 +531,12 @@ def _run_mutant(
 
     findings = list(run_a["findings"])
     findings.extend(_repeat_desync_findings(run_a, run_b))
+    trace_oracle = _trace_state_oracle(
+        baseline_records=baseline_records,
+        run_a=run_a,
+        run_b=run_b,
+    )
+    findings.extend(_replay_state_findings(trace_oracle))
     findings.extend(
         _replay_stable_trace_findings(
             run_a=run_a,
@@ -332,6 +558,7 @@ def _run_mutant(
         "mutation_metadata": mutant.metadata,
         "run_a": {key: value for key, value in run_a.items() if key != "findings"},
         "run_b": {key: value for key, value in run_b.items() if key != "findings"},
+        "trace_oracle": trace_oracle,
         "findings": [{"kind": finding.kind, "detail": finding.detail} for finding in filtered_findings],
         "interesting": bool(filtered_findings),
     }

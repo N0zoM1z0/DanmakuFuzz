@@ -31,11 +31,11 @@ PYTHONPATH=src python3 findings/semantic/stage6-jump-offset-large-forward-headle
 Current local evidence:
 
 - source semantic case:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-jump-call-long-all/ecldata6/0005-jump-offset-large-forward-s00-i0013/result.json`
+  `artifacts/semantic-family-sweep/20260822T-jump-call-long-all/ecldata6/0005-jump-offset-large-forward-s00-i0013/result.json`
 - family sweep summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-jump-call-long-all/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-jump-call-long-all/summary.json`
 - retail confirmation smoke:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-jump-offset-large-forward-headless-wedge-retail-smoke/retail/report.json`
+  `artifacts/findings/semantic-stage6-jump-offset-large-forward-headless-wedge-retail-smoke/retail/report.json`
 
 Why this one matters:
 

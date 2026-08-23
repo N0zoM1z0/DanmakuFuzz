@@ -39,5 +39,8 @@ def test_evaluate_pbg3_payload_distinguishes_parse_and_acceptance() -> None:
     }
     accepted = evaluate_pbg3_payload(_tiny_archive() + (b"\xAA" * 32), baseline_hashes)
     assert accepted["classification"] == "accepted"
+    assert accepted["interesting"] is False
+    assert accepted["evidence_level"] == "FORMAT_CHARACTERIZATION"
+    assert accepted["observation_kind"] == "format-equivalent-acceptance"
     parse_error = evaluate_pbg3_payload(b"\x00\x00\x00\x00" + _tiny_archive()[4:], baseline_hashes)
     assert parse_error["classification"] == "parse-error"

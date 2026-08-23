@@ -49,13 +49,13 @@ Tracked compact payload patches:
 Current local evidence:
 
 - broader Stage 6 site scan:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-site-basins/stage6-bullet-count2-s04-i0003-a/summary.json`
+  `artifacts/semantic-site-basins/stage6-bullet-count2-s04-i0003-a/summary.json`
 - focused consecutive-value scan:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-site-basins/stage6-bullet-count2-s04-i0003-b/summary.json`
+  `artifacts/semantic-site-basins/stage6-bullet-count2-s04-i0003-b/summary.json`
 - August 22, 2026 retail smoke for the `bullet-count2=8` representative:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-bullet-count2-consecutive-stall-ladder/retail/report.json`
+  `artifacts/findings/semantic-stage6-bullet-count2-consecutive-stall-ladder/retail/report.json`
 - related Stage 6 `bullet-count2` item-flood basin on a different site:
-  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage6-bullet-count2-item-flood-basin/README.md`
+  `findings/semantic/stage6-bullet-count2-item-flood-basin/README.md`
 
 Why this one matters:
 

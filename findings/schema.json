@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/danmakufuzz/finding.schema.json",
+  "title": "DanmakuFuzz finding metadata",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "id",
+    "title",
+    "kind",
+    "evidence_level",
+    "headless_runs",
+    "retail_runs",
+    "payload_sha256",
+    "model_revision",
+    "retail_exe_sha256",
+    "expected_oracle"
+  ],
+  "properties": {
+    "schema": {
+      "const": "danmakufuzz-finding-v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_level": {
+      "enum": [
+        "FORMAT_REJECTED",
+        "FORMAT_CHARACTERIZATION",
+        "MODEL_PARSER_ONLY",
+        "HEADLESS_CANDIDATE",
+        "HEADLESS_REPRODUCED",
+        "RETAIL_LAUNCH_SMOKE",
+        "RETAIL_BEHAVIOR_DIVERGENCE",
+        "RETAIL_CRASH_REPRODUCED",
+        "RETAIL_CRASH_WITH_BACKTRACE",
+        "SECURITY_RELEVANT"
+      ]
+    },
+    "headless_runs": {
+      "$ref": "#/$defs/run_counts"
+    },
+    "retail_runs": {
+      "$ref": "#/$defs/run_counts"
+    },
+    "payload_sha256": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/sha256"},
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/sha256"}
+        }
+      ]
+    },
+    "model_revision": {
+      "type": ["string", "null"]
+    },
+    "retail_exe_sha256": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/sha256"},
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/sha256"}
+        }
+      ]
+    },
+    "expected_oracle": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "classification": {"type": ["string", "null"]},
+        "retail_signature_key": {"type": ["string", "null"]}
+      }
+    },
+    "triage_status": {
+      "enum": [
+        "confirmed-retail",
+        "retail-disconfirmed",
+        "retail-observation",
+        "headless-pending-retail",
+        "blocked-retail-oracle",
+        "format-observation",
+        "needs-reproduction"
+      ]
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$"
+    },
+    "run_counts": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["pass", "total"],
+      "properties": {
+        "pass": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

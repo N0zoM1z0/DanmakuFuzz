@@ -42,11 +42,11 @@ ignored artifact output or the current exploration sampler internals.
 Current local evidence:
 
 - short cross-field exploration sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic/cross-count-stage6-seed7-ecldata6/campaign.json`
+  `artifacts/semantic/cross-count-stage6-seed7-ecldata6/campaign.json`
 - long-run confirmation sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic/cross-count-stage6-long-a/campaign.json`
+  `artifacts/semantic/cross-count-stage6-long-a/campaign.json`
 - long-run source case:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic/cross-count-stage6-long-a/0001-bullet-count-cross-sampled-32774-130-s01-i0003/result.json`
+  `artifacts/semantic/cross-count-stage6-long-a/0001-bullet-count-cross-sampled-32774-130-s01-i0003/result.json`
 
 Why this one matters:
 

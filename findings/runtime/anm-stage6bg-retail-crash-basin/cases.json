@@ -1,0 +1,85 @@
+{
+  "schema": "danmakufuzz-retail-positive-case-set-v1",
+  "finding": "runtime/anm-stage6bg-retail-crash-basin",
+  "retail_exe_sha256": "9f76483c46256804792399296619c1274363c31cd8f1775fafb55106fb852245",
+  "cases": [
+    {
+      "name": "first-sprite-offset-zero",
+      "entry_name": "stg6bg.anm",
+      "mutant_name": "first-sprite-offset-zero",
+      "stage": 6,
+      "mutation": {
+        "table": "sprite_offsets",
+        "index": 0,
+        "field": "offset",
+        "value": 0
+      },
+      "source_result_artifact": "artifacts/checks/anm-runtime-stage6-accepted-full-20260823/stg6bg.anm/0004-first-sprite-offset-zero/result.json",
+      "payload_sha256": "6d4d68a44c06a19b018b000a73c7a43dacc83d316a65c1f50c3d142d920c63ff",
+      "classification": "crash-dialog",
+      "wine_primary_signature": "wine: Unhandled page fault on read access to 102040B0 at address 00405030 (thread 013c), starting debugger...",
+      "retail_signature_key": "crash-dialog:wine: unhandled page fault on read access to <value> at address <addr> (thread <thread>), starting debugger...",
+      "primary_finding": "anm-set-active-sprite-failure:$.anm_metrics.set_active_sprite_failures=6",
+      "finding_keys": [
+        "anm-set-active-sprite-failure:$.anm_metrics.set_active_sprite_failures=6",
+        "anm-suspicious-sprite:$.anm_metrics.suspicious_sprites_loaded=1",
+        "anm-load-drift:tick 16 anm_metrics.suspicious_sprites_loaded baseline=0 case=1"
+      ],
+      "baseline_termination_reason": "game-window-live",
+      "mutant_termination_reason": "crash-dialog",
+      "max_diff_ratio": 0.40570831298828125,
+      "retail_artifact_dir": "artifacts/checks/retail-batch-anm-stage6bg-target-hits-20260823/0001-0004-first-sprite-offset-zero",
+      "repeat_evidence": "artifacts/checks/retail-repeat-anm-stage6bg-first-sprite-offset-zero-crash-20260823/report.json"
+    },
+    {
+      "name": "first-script-id-ffff",
+      "entry_name": "stg6bg.anm",
+      "mutant_name": "first-script-id-ffff",
+      "stage": 6,
+      "mutation": {
+        "table": "script_entries",
+        "index": 0,
+        "field": "id",
+        "value": 65535
+      },
+      "source_result_artifact": "artifacts/checks/anm-runtime-stage6-accepted-full-20260823/stg6bg.anm/0005-first-script-id-ffff/result.json",
+      "payload_sha256": "1edd3d4cab15a2a81074f0937caf973b34ea0e0cbc72e74bb328ae3775f53b85",
+      "classification": "crash-dialog",
+      "wine_primary_signature": "wine: Unhandled page fault on read access to 102040B0 at address 00405030 (thread 013c), starting debugger...",
+      "retail_signature_key": "crash-dialog:wine: unhandled page fault on read access to <value> at address <addr> (thread <thread>), starting debugger...",
+      "primary_finding": "anm-script-drift:tick 16 anm_metrics.execute_script_calls baseline=681 case=679",
+      "finding_keys": [
+        "anm-script-drift:tick 16 anm_metrics.execute_script_calls baseline=681 case=679"
+      ],
+      "baseline_termination_reason": "game-window-live",
+      "mutant_termination_reason": "crash-dialog",
+      "max_diff_ratio": 0.40457789103190106,
+      "retail_artifact_dir": "artifacts/checks/retail-batch-anm-stage6bg-target-hits-20260823/0002-0005-first-script-id-ffff"
+    },
+    {
+      "name": "first-script-offset-zero",
+      "entry_name": "stg6bg.anm",
+      "mutant_name": "first-script-offset-zero",
+      "stage": 6,
+      "mutation": {
+        "table": "script_entries",
+        "index": 0,
+        "field": "first_instruction",
+        "value": 0
+      },
+      "source_result_artifact": "artifacts/checks/anm-runtime-stage6-accepted-full-20260823/stg6bg.anm/0006-first-script-offset-zero/result.json",
+      "payload_sha256": "2642efd137a88bed4b325c383dc7d9085d19fcecc92dd103e93e96a938d79744",
+      "classification": "crash-dialog",
+      "wine_primary_signature": "wine: Unhandled page fault on read access to 102040B0 at address 00405030 (thread 013c), starting debugger...",
+      "retail_signature_key": "crash-dialog:wine: unhandled page fault on read access to <value> at address <addr> (thread <thread>), starting debugger...",
+      "primary_finding": "anm-script-drift:tick 16 anm_metrics.execute_script_calls baseline=681 case=689",
+      "finding_keys": [
+        "anm-script-drift:tick 16 anm_metrics.execute_script_calls baseline=681 case=689"
+      ],
+      "baseline_termination_reason": "game-window-live",
+      "mutant_termination_reason": "crash-dialog",
+      "max_diff_ratio": 0.40420277913411456,
+      "retail_artifact_dir": "artifacts/checks/retail-batch-anm-stage6bg-target-hits-20260823/0003-0006-first-script-offset-zero"
+    }
+  ]
+}

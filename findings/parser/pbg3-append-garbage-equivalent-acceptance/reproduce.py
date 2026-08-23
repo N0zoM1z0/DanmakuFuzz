@@ -64,8 +64,12 @@ def main() -> int:
     evaluation = evaluate_pbg3_payload(mutant.payload, baseline_hashes)
     if evaluation.get("classification") != "accepted":
         raise RuntimeError(f"target mutant no longer accepted: {evaluation}")
-    if not bool(evaluation.get("interesting")):
-        raise RuntimeError(f"target mutant no longer marked interesting: {evaluation}")
+    if bool(evaluation.get("interesting")):
+        raise RuntimeError(f"target mutant unexpectedly promoted to interesting: {evaluation}")
+    if evaluation.get("evidence_level") != "FORMAT_CHARACTERIZATION":
+        raise RuntimeError(f"target mutant evidence level drifted: {evaluation}")
+    if evaluation.get("observation_kind") != "format-equivalent-acceptance":
+        raise RuntimeError(f"target mutant observation kind drifted: {evaluation}")
     if not bool(evaluation.get("equivalent_to_baseline")):
         raise RuntimeError(f"target mutant no longer equivalent to baseline: {evaluation}")
 

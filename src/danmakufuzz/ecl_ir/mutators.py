@@ -53,6 +53,18 @@ class Mutant:
     metadata: dict[str, object] | None = None
 
 
+def _mutant_dedupe_key(mutant: Mutant) -> tuple[str, str]:
+    metadata = mutant.metadata or {}
+    site_key = metadata.get("site_key")
+    if isinstance(site_key, str) and site_key:
+        site = site_key
+    elif mutant.path is not None:
+        site = f"s{mutant.path[0]}:i{mutant.path[1]}"
+    else:
+        site = "raw"
+    return (mutant.name, site)
+
+
 def _replace_i16(buffer: bytes, offset: int, value: int) -> bytes:
     mutable = bytearray(buffer)
     mutable[offset:offset + 2] = int(value).to_bytes(2, "little", signed=True)
@@ -345,9 +357,9 @@ def generate_targeted_mutants(ecl: EclFile) -> list[Mutant]:
                     RawInstruction(**{**instruction.__dict__, "args": _replace_i32(instruction.args, 0, -1)})
                 )))
     deduped: list[Mutant] = []
-    seen: set[tuple[str, tuple[int, int]]] = set()
+    seen: set[tuple[str, str]] = set()
     for mutant in mutants:
-        dedupe_key = (mutant.name, mutant.path)
+        dedupe_key = _mutant_dedupe_key(mutant)
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
@@ -2376,9 +2388,9 @@ def generate_exploration_mutants(
     )
 
     deduped: list[Mutant] = []
-    seen: set[tuple[str, tuple[int, int] | None]] = set()
+    seen: set[tuple[str, str]] = set()
     for mutant in mutants:
-        dedupe_key = (mutant.name, mutant.path)
+        dedupe_key = _mutant_dedupe_key(mutant)
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)

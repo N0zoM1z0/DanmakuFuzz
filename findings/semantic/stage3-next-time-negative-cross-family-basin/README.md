@@ -55,19 +55,19 @@ Tracked compact payload patches:
 Current local evidence:
 
 - broader portable core exploration sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-portable-core-explore-c/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-portable-core-explore-c/summary.json`
 - broader portable core hotspot summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/portable-core-explore-c/summary.json`
+  `artifacts/semantic-hotspots/portable-core-explore-c/summary.json`
 - broader portable core trace basin summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/portable-core-explore-c/summary.json`
+  `artifacts/semantic-trace-basins/portable-core-explore-c/summary.json`
 - widened portable core exploration sweep after site-level exploration reorder:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-portable-core-explore-d/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-portable-core-explore-d/summary.json`
 - widened portable core hotspot summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/portable-core-explore-d/summary.json`
+  `artifacts/semantic-hotspots/portable-core-explore-d/summary.json`
 - widened portable core trace basin summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/portable-core-explore-d/summary.json`
+  `artifacts/semantic-trace-basins/portable-core-explore-d/summary.json`
 - dedicated call-sub representative finding:
-  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage3-call-sub-zero-in-range-next-time-negative/README.md`
+  `findings/semantic/stage3-call-sub-zero-in-range-next-time-negative/README.md`
 
 Why this one matters:
 

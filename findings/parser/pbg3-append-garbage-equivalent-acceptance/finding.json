@@ -1,0 +1,17 @@
+{
+  "schema": "danmakufuzz-finding-v1",
+  "id": "parser/pbg3-append-garbage-equivalent-acceptance",
+  "title": "PBG3 append-garbage equivalent acceptance",
+  "kind": "format-equivalent-acceptance",
+  "evidence_level": "FORMAT_CHARACTERIZATION",
+  "headless_runs": {"pass": 0, "total": 0},
+  "retail_runs": {"pass": 0, "total": 0},
+  "payload_sha256": "e47628ac66bb8d157387bdcd07f2143d9688d74e9b389ebee030a5f526f35e2c",
+  "model_revision": null,
+  "retail_exe_sha256": null,
+  "expected_oracle": null,
+  "triage_status": "format-observation",
+  "notes": [
+    "Accepted and equivalent parser behavior is tracked as a format characterization, not as a bug candidate."
+  ]
+}

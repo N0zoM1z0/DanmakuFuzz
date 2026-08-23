@@ -24,9 +24,9 @@ archive replacement.
 Current local evidence:
 
 - campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-pbg3-campaign-deep-smoke/campaign.json`
+  `artifacts/tmp-pbg3-campaign-deep-smoke/campaign.json`
 - per-case result:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-pbg3-campaign-deep-smoke/0002-first-entry-checksum-zero/result.json`
+  `artifacts/tmp-pbg3-campaign-deep-smoke/0002-first-entry-checksum-zero/result.json`
 
 Why this one matters:
 

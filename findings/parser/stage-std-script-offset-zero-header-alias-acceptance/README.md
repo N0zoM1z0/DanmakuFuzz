@@ -47,11 +47,11 @@ the retail seed.
 Current local evidence:
 
 - campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-stage-std/20260823T-stage1-campaign-a/campaign.json`
+  `artifacts/parser-stage-std/20260823T-stage1-campaign-a/campaign.json`
 - per-case result:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-stage-std/20260823T-stage1-campaign-a/0006-script-offset-zero/result.json`
+  `artifacts/parser-stage-std/20260823T-stage1-campaign-a/0006-script-offset-zero/result.json`
 - standalone reproduction summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/parser-stage-std-script-offset-zero-header-alias-acceptance/summary.json`
+  `artifacts/findings/parser-stage-std-script-offset-zero-header-alias-acceptance/summary.json`
 
 Why this one matters:
 

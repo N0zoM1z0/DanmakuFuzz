@@ -66,13 +66,13 @@ Tracked compact payload patches:
 Current local evidence:
 
 - exact basin harvest:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-basin-harvest/20260823T-stage1-second-shoot-interval-site-a/stage1-ecldata1-shoot-interval-s01-i0007/summary.json`
+  `artifacts/semantic-basin-harvest/20260823T-stage1-second-shoot-interval-site-a/stage1-ecldata1-shoot-interval-s01-i0007/summary.json`
 - harvest driver summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-basin-harvest/20260823T-stage1-second-shoot-interval-site-a/summary.json`
+  `artifacts/semantic-basin-harvest/20260823T-stage1-second-shoot-interval-site-a/summary.json`
 - headless reproduce summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage1-second-shoot-interval-cross-value-three-basin-fork/summary.json`
+  `artifacts/findings/semantic-stage1-second-shoot-interval-cross-value-three-basin-fork/summary.json`
 - retail smoke for the `shoot-interval=-1` representative:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage1-second-shoot-interval-cross-value-three-basin-fork/retail/report.json`
+  `artifacts/findings/semantic-stage1-second-shoot-interval-cross-value-three-basin-fork/retail/report.json`
 
 Why this one matters:
 

@@ -46,13 +46,13 @@ Tracked compact payload patches:
 Current local evidence:
 
 - source exploration grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-core-grid-c/summary.json`
+  `artifacts/semantic-exploration-grid/20260822T-core-grid-c/summary.json`
 - exact 1800-tick confirmation rerun:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exact-rerun/20260822T-stage23-recheck-a/summary.jsonl`
+  `artifacts/semantic-exact-rerun/20260822T-stage23-recheck-a/summary.jsonl`
 - retail launch/progress smoke for the `shoot-interval=179` representative:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage2-shoot-interval-cross-value-tail-split-retail-a/retail/report.json`
+  `artifacts/findings/semantic-stage2-shoot-interval-cross-value-tail-split-retail-a/retail/report.json`
 - earlier single-value predecessor on the same site family:
-  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage2-shoot-interval-one-bullet-flood/README.md`
+  `findings/semantic/stage2-shoot-interval-one-bullet-flood/README.md`
 
 Why this one matters:
 

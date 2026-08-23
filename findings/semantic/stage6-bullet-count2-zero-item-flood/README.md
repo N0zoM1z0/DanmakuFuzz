@@ -31,11 +31,11 @@ PYTHONPATH=src python3 findings/semantic/stage6-bullet-count2-zero-item-flood/re
 Current local evidence:
 
 - source semantic case:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-bullet-count-long-all/ecldata6/0002-bullet-count2-zero-s01-i0003/result.json`
+  `artifacts/semantic-family-sweep/20260822T-bullet-count-long-all/ecldata6/0002-bullet-count2-zero-s01-i0003/result.json`
 - family sweep summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-bullet-count-long-all/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-bullet-count-long-all/summary.json`
 - retail confirmation smoke:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-bullet-count2-zero-item-flood-retail-smoke/retail/report.json`
+  `artifacts/findings/semantic-stage6-bullet-count2-zero-item-flood-retail-smoke/retail/report.json`
 
 Why this one matters:
 

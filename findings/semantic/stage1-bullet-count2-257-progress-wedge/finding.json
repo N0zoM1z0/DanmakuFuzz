@@ -1,0 +1,17 @@
+{
+  "schema": "danmakufuzz-finding-v1",
+  "id": "semantic/stage1-bullet-count2-257-progress-wedge",
+  "title": "Stage 1 bullet-count2=257 progress wedge",
+  "kind": "semantic-progress-wedge",
+  "evidence_level": "HEADLESS_REPRODUCED",
+  "headless_runs": {"pass": 1, "total": 1},
+  "retail_runs": {"pass": 0, "total": 0},
+  "payload_sha256": "c8d63d119721faa3e62bfa874b24b2b9f694d5ac9ad5619e24c2dc6a65a7ecd5",
+  "model_revision": "th06-headless:4a9df00487c44985739da4af0e795f47460d0e00",
+  "retail_exe_sha256": null,
+  "expected_oracle": null,
+  "triage_status": "blocked-retail-oracle",
+  "notes": [
+    "This is a headless-reproduced candidate until a retail oracle expectation is asserted with repeat/require."
+  ]
+}

@@ -119,18 +119,18 @@ Tracked compact payload patches:
 Current local evidence:
 
 - source exploration grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-mutator-broaden-a/summary.json`
+  `artifacts/semantic-exploration-grid/20260822T-mutator-broaden-a/summary.json`
 - cluster summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-clusters/20260822T222333Z/summary.json`
+  `artifacts/semantic-clusters/20260822T222333Z/summary.json`
 - local reproduce summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/summary.json`
+  `artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/summary.json`
 - latest retail representative report:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail-runs/20260822T225522Z-stage5-difficulty-mask-96/report.json`
+  `artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail-runs/20260822T225522Z-stage5-difficulty-mask-96/report.json`
 - latest retail clean baseline report:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail-runs/20260822T225522Z-stage5-difficulty-mask-96/baseline/report.json`
+  `artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail-runs/20260822T225522Z-stage5-difficulty-mask-96/baseline/report.json`
 - ambiguous older retail artifacts worth keeping for archaeology:
-  - reused-state run: `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail/report.json`
-  - isolated fresh check: `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail-fresh-check/report.json`
+  - reused-state run: `artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail/report.json`
+  - isolated fresh check: `artifacts/findings/semantic-stages1-5-opening-op97-shared-segv-shortfall-basin/retail-fresh-check/report.json`
 
 Current interpretation:
 

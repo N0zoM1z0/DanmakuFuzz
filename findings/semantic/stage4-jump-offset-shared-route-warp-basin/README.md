@@ -76,15 +76,15 @@ Tracked compact payload patches:
 Current local evidence:
 
 - source exploration grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-core-grid-a/summary.json`
+  `artifacts/semantic-exploration-grid/20260822T-core-grid-a/summary.json`
 - cluster summary for the grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-clusters/20260822T-core-grid-a/summary.json`
+  `artifacts/semantic-clusters/20260822T-core-grid-a/summary.json`
 - dedicated trace-basin proof for these four exact values:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/20260822T181419Z/summary.json`
+  `artifacts/semantic-trace-basins/20260822T181419Z/summary.json`
 - long-tail exact rerun for the `-78` / `-320` pair:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exact-rerun/20260822T-stage4-jump-grid-c/report.json`
+  `artifacts/semantic-exact-rerun/20260822T-stage4-jump-grid-c/report.json`
 - August 22, 2026 retail smoke for the `jump-offset=-320` representative:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage4-jump-offset-shared-route-warp-basin/retail/report.json`
+  `artifacts/findings/semantic-stage4-jump-offset-shared-route-warp-basin/retail/report.json`
 
 Why this one matters:
 

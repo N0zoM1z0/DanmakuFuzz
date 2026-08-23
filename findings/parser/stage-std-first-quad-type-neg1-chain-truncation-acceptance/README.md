@@ -51,11 +51,11 @@ the retail seed.
 Current local evidence:
 
 - campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-stage-std/20260823T-stage1-campaign-a/campaign.json`
+  `artifacts/parser-stage-std/20260823T-stage1-campaign-a/campaign.json`
 - per-case result:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-stage-std/20260823T-stage1-campaign-a/0011-first-quad-type-neg1/result.json`
+  `artifacts/parser-stage-std/20260823T-stage1-campaign-a/0011-first-quad-type-neg1/result.json`
 - standalone reproduction summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/parser-stage-std-first-quad-type-neg1-chain-truncation-acceptance/summary.json`
+  `artifacts/findings/parser-stage-std-first-quad-type-neg1-chain-truncation-acceptance/summary.json`
 
 Why this one matters:
 

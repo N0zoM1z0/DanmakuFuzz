@@ -78,9 +78,12 @@ trees. Most parser artifacts are disposable and can be pruned with
 `scripts/prune_artifacts.sh` once the reviewed findings have been written down.
 
 PBG3 classifies each case as `parse-error`, `extract-error`, or
-`accepted`; replay, stage `.std`, message `.dat`, cfg, score, and ANM lanes
-classify each case as rejected/fallback/accepted depending on the format, then
-flag accepted cases that materially diverge from baseline.
+`accepted`. Accepted PBG3 cases that are byte-for-byte equivalent after
+extraction are now `FORMAT_CHARACTERIZATION` observations rather than
+interesting bug candidates; accepted-with-drift and extraction errors remain
+review targets. Replay, stage `.std`, message `.dat`, cfg, score, and ANM
+lanes classify each case as rejected/fallback/accepted depending on the
+format, then flag accepted cases that materially diverge from baseline.
 
 The parser lane should remain binary-first and source-less. TH06 is the proving
 ground, not the final scope.

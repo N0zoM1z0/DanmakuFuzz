@@ -31,11 +31,11 @@ not buy us much.
 Current local evidence:
 
 - campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-pbg3/20260822T-campaign-b/campaign.json`
+  `artifacts/parser-pbg3/20260822T-campaign-b/campaign.json`
 - per-case result:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-pbg3/20260822T-campaign-b/0004-entry-count-one/result.json`
+  `artifacts/parser-pbg3/20260822T-campaign-b/0004-entry-count-one/result.json`
 - standalone reproduction summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/parser-pbg3-entry-count-one-truncation-acceptance/summary.json`
+  `artifacts/findings/parser-pbg3-entry-count-one-truncation-acceptance/summary.json`
 
 Why this one matters:
 

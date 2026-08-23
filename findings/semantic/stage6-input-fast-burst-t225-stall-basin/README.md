@@ -77,7 +77,7 @@ Tracked payload:
 Current local evidence:
 
 - campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-input/20260823T020540Z/campaign.json`
+  `artifacts/semantic-input/20260823T020540Z/campaign.json`
 - per-case result:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-input/20260823T020540Z/0007-fast-burst-down_fast-t225-w8/result.json`
+  `artifacts/semantic-input/20260823T020540Z/0007-fast-burst-down_fast-t225-w8/result.json`
 

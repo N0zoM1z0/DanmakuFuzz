@@ -78,13 +78,13 @@ Tracked compact payload patches:
 Current local evidence:
 
 - source exploration grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-core-grid-e/summary.json`
+  `artifacts/semantic-exploration-grid/20260822T-core-grid-e/summary.json`
 - hotspot summary for that grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/20260822T-core-grid-e/summary.json`
+  `artifacts/semantic-hotspots/20260822T-core-grid-e/summary.json`
 - explicit 600-tick trace grouping for these six representatives:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/20260822T-stage5-bullet-count-cross-grid-e-600-b/summary.json`
+  `artifacts/semantic-trace-basins/20260822T-stage5-bullet-count-cross-grid-e-600-b/summary.json`
 - longer exact rerun sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exact-rerun/20260822T-stage5-bullet-count-cross-grid-e-a/report.json`
+  `artifacts/semantic-exact-rerun/20260822T-stage5-bullet-count-cross-grid-e-a/report.json`
 
 Why this one matters:
 

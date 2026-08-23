@@ -1,0 +1,227 @@
+{
+  "schema": "danmakufuzz-finding-status-index-v1",
+  "updated": "2026-08-23",
+  "buckets": [
+    "confirmed-retail",
+    "retail-disconfirmed",
+    "retail-observation",
+    "headless-pending-retail",
+    "blocked-retail-oracle",
+    "format-observation",
+    "needs-reproduction"
+  ],
+  "entries": [
+    {
+      "status": "confirmed-retail",
+      "finding": "findings/semantic/ecl-timeline-arg0-retail-crash-stall-basin",
+      "title": "ECL timeline-arg0 retail crash/stall basin",
+      "scope": "retail-family",
+      "expected_oracle": {"classification": "crash-dialog|retail-frame-stall"},
+      "evidence": [
+        "findings/semantic/ecl-timeline-arg0-retail-crash-stall-basin/finding.json",
+        "findings/semantic/ecl-timeline-arg0-retail-crash-stall-basin/cases.json",
+        "artifacts/checks/retail-repeat-stage5-timeline-arg0-256-frame-stall/report.json",
+        "artifacts/checks/retail-batch-more-stage6-timeline-arg0-values/results.jsonl"
+      ],
+      "notes": "14 independent payloads across stages 2-6 reproduced as crash-dialog or retail-frame-stall with clean live baselines."
+    },
+    {
+      "status": "confirmed-retail",
+      "finding": "findings/runtime/anm-stage6bg-retail-crash-basin",
+      "title": "Stage 6 background ANM retail crash basin",
+      "scope": "retail-family",
+      "expected_oracle": {"classification": "crash-dialog"},
+      "evidence": [
+        "findings/runtime/anm-stage6bg-retail-crash-basin/finding.json",
+        "findings/runtime/anm-stage6bg-retail-crash-basin/cases.json",
+        "artifacts/checks/retail-batch-anm-stage6bg-target-hits-20260823/results.jsonl",
+        "artifacts/checks/retail-repeat-anm-stage6bg-first-sprite-offset-zero-crash-20260823/report.json"
+      ],
+      "notes": "3/3 Stage 6 stg6bg.anm target hits reproduced as Wine crash-dialog; first-sprite-offset-zero repeated 2/2 with --require 2."
+    },
+    {
+      "status": "confirmed-retail",
+      "title": "Stage 5 timeline-arg0=256 retail frame stall",
+      "scope": "retail-case",
+      "expected_oracle": {"classification": "retail-frame-stall"},
+      "evidence": [
+        "artifacts/checks/retail-repeat-stage5-timeline-arg0-256-frame-stall/report.json",
+        "artifacts/checks/retail-batch-more-stage5-timeline-arg0-values/results.jsonl"
+      ],
+      "notes": "Repeat confirmation passed 2/2; observed retail frame stayed at 441 while required frame was above 510."
+    },
+    {
+      "status": "confirmed-retail",
+      "title": "Stage 6 timeline-arg0 crash mapping",
+      "scope": "retail-family",
+      "expected_oracle": {"classification": "crash-dialog"},
+      "evidence": [
+        "artifacts/checks/retail-batch-more-stage6-timeline-arg0-values/results.jsonl",
+        "artifacts/checks/retail-batch-weird-state-stage6-timeline-arg0/results.jsonl"
+      ],
+      "notes": "Additional values -59, -40, 257, and 32767 reproduced as retail crash-dialog with clean live baselines."
+    },
+    {
+      "status": "confirmed-retail",
+      "title": "Stage 4 jump-offset=2139062143 retail crash",
+      "scope": "retail-case",
+      "expected_oracle": {"classification": "crash-dialog"},
+      "evidence": [
+        "artifacts/checks/retail-batch-weird-state-stage4-crash-families/results.jsonl"
+      ]
+    },
+    {
+      "status": "retail-disconfirmed",
+      "title": "Stage 6 bullet-count/shoot-interval semantic samples",
+      "scope": "retail-batch",
+      "observed_oracle": {"classification": "game-window-live"},
+      "evidence": [
+        "artifacts/checks/retail-batch-stage6-bullet-shoot-semantic/results.jsonl"
+      ],
+      "notes": "4/4 live under retail. Visual drift exists, but not a crash/stall oracle."
+    },
+    {
+      "status": "retail-disconfirmed",
+      "title": "Stage 6 timeline-opcode/adjacent-time samples",
+      "scope": "retail-batch",
+      "observed_oracle": {"classification": "game-window-live"},
+      "evidence": [
+        "artifacts/checks/retail-batch-stage6-opcode-time-control/results.jsonl"
+      ],
+      "notes": "4/4 live under retail, including a headless timeline-next-time-negative representative."
+    },
+    {
+      "status": "retail-disconfirmed",
+      "title": "Stage 5 jump-offset sampled representatives",
+      "scope": "retail-family-sample",
+      "observed_oracle": {"classification": "game-window-live"},
+      "evidence": [
+        "artifacts/checks/retail-batch-stage5-jump-offset-more/results.jsonl",
+        "artifacts/checks/retail-batch-weird-state-stage5-crash-families/results.jsonl"
+      ],
+      "notes": "Expanded Stage 5 jump-offset samples did not reproduce the Stage 4 jump-offset retail crash behavior."
+    },
+    {
+      "status": "blocked-retail-oracle",
+      "finding": "findings/semantic/stage1-bullet-count2-257-progress-wedge",
+      "title": "Stage 1 bullet-count2=257 progress wedge",
+      "scope": "finding",
+      "evidence": [
+        "artifacts/checks/retail-batch-weird-state-stage1-stalls-longprobe/results.jsonl"
+      ],
+      "notes": "Not confirmed false. Retail Stage 1 long-probe comparison needs deterministic gameplay controls."
+    },
+    {
+      "status": "headless-pending-retail",
+      "title": "Replay Stage 6 state-oracle stable drift smoke",
+      "scope": "headless-batch",
+      "evidence": [
+        "artifacts/checks/replay-desync-stage6-state-oracle-smoke-v2-20260823/campaign.json",
+        "artifacts/checks/replay-desync-stage6-state-oracle-smoke-v2-20260823/summary.jsonl"
+      ],
+      "notes": "8 generated mutants, 6 interesting stable state drifts, 2 materialization errors. The state oracle reports game_frame/VM/timeline/entity divergence instead of raw trace hash only."
+    },
+    {
+      "status": "headless-pending-retail",
+      "finding": "findings/semantic/replay-native-first-bookmark-cut-tail-input-error-basin",
+      "title": "Replay-native first-bookmark cut-tail input-error basin",
+      "scope": "headless-replay-family",
+      "expected_oracle": {
+        "classification": "process-exit",
+        "terminal_reason": "input-error"
+      },
+      "evidence": [
+        "findings/semantic/replay-native-first-bookmark-cut-tail-input-error-basin/finding.json",
+        "findings/semantic/replay-native-first-bookmark-cut-tail-input-error-basin/cases.json",
+        "artifacts/findings/semantic-replay-native-first-bookmark-cut-tail-input-error-basin-20260823/summary.json",
+        "artifacts/checks/replay-desync-public-gensokyo804-stage6-coordinated-20260823/summary.jsonl"
+      ],
+      "notes": "Three public replay cases deterministically terminate with input-error/returncode 1 after first-bookmark cut-tail; the new gensokyo-th6-804 Stage 6 case cuts at frame 56 and exits at tick 58."
+    },
+    {
+      "status": "format-observation",
+      "finding": "findings/parser/pbg3-append-garbage-equivalent-acceptance",
+      "title": "PBG3 append-garbage equivalent acceptance",
+      "scope": "finding",
+      "evidence": [
+        "findings/parser/pbg3-append-garbage-equivalent-acceptance/finding.json"
+      ],
+      "notes": "Equivalent accepted behavior, not a bug candidate."
+    },
+    {
+      "status": "format-observation",
+      "finding": "findings/parser/pbg3-entry-map-metamorphic-equivalence",
+      "title": "PBG3 archive entry-map metamorphic equivalence",
+      "scope": "format-family",
+      "expected_oracle": {
+        "classification": "accepted",
+        "metamorphic_relation": "archive-entry-map-equivalence"
+      },
+      "evidence": [
+        "findings/parser/pbg3-entry-map-metamorphic-equivalence/finding.json",
+        "artifacts/checks/pbg3-metamorphic-unique-dat-20260823/campaign.json"
+      ],
+      "notes": "66/66 generated transforms across 6 unique retail archives preserved the parsed entry map; this is a format characterization, not a bug candidate."
+    },
+    {
+      "status": "format-observation",
+      "finding": "findings/runtime/anm-stage6-metamorphic-runtime-equivalence",
+      "title": "Stage 6 ANM metamorphic runtime equivalence",
+      "scope": "headless-runtime-family",
+      "expected_oracle": {
+        "classification": "equivalent",
+        "metamorphic_relations": "anm-ignored-header-field-equivalence|anm-script-table-order-equivalence"
+      },
+      "evidence": [
+        "findings/runtime/anm-stage6-metamorphic-runtime-equivalence/finding.json",
+        "artifacts/checks/anm-metamorphic-runtime-stage6-20260823/campaign.json",
+        "artifacts/checks/anm-metamorphic-runtime-stage6-20260823/summary.jsonl"
+      ],
+      "notes": "12/12 Stage 6 ANM header/script-table transformations were byte-for-byte trace-equivalent to baseline under th06-headless."
+    },
+    {
+      "status": "format-observation",
+      "finding": "findings/semantic/replay-action-stream-metamorphic-equivalence",
+      "title": "Replay action-stream metamorphic equivalence",
+      "scope": "headless-replay-family",
+      "expected_oracle": {
+        "classification": "equivalent",
+        "metamorphic_relation": "replay-action-stream-equivalence"
+      },
+      "evidence": [
+        "findings/semantic/replay-action-stream-metamorphic-equivalence/finding.json",
+        "artifacts/checks/replay-metamorphic-stage6-20260823/campaign.json",
+        "artifacts/checks/replay-metamorphic-public-fairysvoice001-stage4-20260823/campaign.json",
+        "artifacts/checks/replay-metamorphic-public-gensokyo804-stage6-20260823/campaign.json"
+      ],
+      "notes": "35/35 alternate replay encodings preserved bounded action streams and headless trace/state; this is a negative-control observation, not a bug candidate."
+    },
+    {
+      "status": "format-observation",
+      "finding": "findings/runtime/stage-std-metadata-metamorphic-runtime-equivalence",
+      "title": "Stage STD metadata metamorphic runtime equivalence",
+      "scope": "headless-runtime-family",
+      "expected_oracle": {
+        "classification": "equivalent",
+        "metamorphic_relations": "stage-std-unknown-header-field-equivalence|stage-std-display-metadata-headless-equivalence|stage-std-cstring-tail-equivalence|stage-std-audio-path-headless-equivalence"
+      },
+      "evidence": [
+        "findings/runtime/stage-std-metadata-metamorphic-runtime-equivalence/finding.json",
+        "artifacts/checks/stage-std-metamorphic-runtime-stage1-20260823/campaign.json",
+        "artifacts/checks/stage-std-metamorphic-runtime-stage2-20260823/campaign.json",
+        "artifacts/checks/stage-std-metamorphic-runtime-stage3-20260823/campaign.json",
+        "artifacts/checks/stage-std-metamorphic-runtime-stage4-20260823/campaign.json",
+        "artifacts/checks/stage-std-metamorphic-runtime-stage5-20260823/campaign.json",
+        "artifacts/checks/stage-std-metamorphic-runtime-stage6-20260823/campaign.json",
+        "artifacts/checks/stage-std-metamorphic-runtime-stage7-20260823/campaign.json"
+      ],
+      "notes": "49/49 stage .std metadata/unknown-field transformations were byte-for-byte trace-equivalent to baseline under th06-headless."
+    }
+  ],
+  "default_policy": [
+    "A semantic finding without retail evidence remains headless-pending-retail.",
+    "A retail live result with only visual drift is retail-observation or retail-disconfirmed for crash/stall claims.",
+    "A case blocked by weak controls should be blocked-retail-oracle, not retail-disconfirmed.",
+    "Accepted/equivalent parser behavior should be format-observation."
+  ]
+}

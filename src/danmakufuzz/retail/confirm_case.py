@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -36,18 +37,60 @@ WINDOWED_OFFSET = 0x1E
 DISPLAY_BASE = 190
 TAP_HOLD_SECONDS = 0.30
 TAP_SETTLE_SECONDS = 0.80
+MENU_TAP_HOLD_SECONDS = 0.02
+MENU_TAP_SETTLE_SECONDS = 0.10
 DEFAULT_STARTUP_SECONDS = 5.0
 DEFAULT_STAGE_ENTRY_WAIT_SECONDS = 3.0
+DEFAULT_STAGE_ENTRY_MIN_FRAME = 60
 DEFAULT_PROGRESS_PROBE_SECONDS = 2.0
+DEFAULT_PROGRESS_PROBE_FRAMES = 120
 DEFAULT_SCREEN_SIZE = "1024x768x24"
+DEFAULT_STARTUP_NORMALIZATION_DELAY_SECONDS = 1.0
+STARTUP_NORMALIZATION_MARKER = "DANMAKUFUZZ_TH06_STARTUP_NORMALIZED=1"
 BASELINE_EQUIVALENCE_RATIO = 0.001
 BASELINE_VISUAL_DRIFT_RATIO = 0.05
+LOW_INFORMATION_UNIQUE_COLOR_LIMIT = 256
+LOW_INFORMATION_TOP_TWO_COLOR_RATIO = 0.995
+MENU_READ_TIMEOUT_SECONDS = 15.0
+MENU_STATE_PRE_INPUT = 1
+MENU_STATE_MAIN_MENU = 2
+MENU_STATE_DIFFICULTY_SELECT = 7
+MENU_STATE_CHARACTER_SELECT = 9
+MENU_STATE_SHOT_SELECT = 11
+MENU_STATE_PRACTICE_STAGE_SELECT = 17
+MENU_STATE_NAMES = {
+    MENU_STATE_PRE_INPUT: "pre-input",
+    MENU_STATE_MAIN_MENU: "main-menu",
+    MENU_STATE_DIFFICULTY_SELECT: "difficulty-select",
+    MENU_STATE_CHARACTER_SELECT: "character-select",
+    MENU_STATE_SHOT_SELECT: "shot-select",
+    MENU_STATE_PRACTICE_STAGE_SELECT: "practice-stage-select",
+}
+ADDR_MAIN_MENU = 0x006D46C0
+MAIN_MENU_CURSOR_OFFSET = 0x81A0
+MAIN_MENU_STATE_OFFSET = 0x81F0
+MAIN_MENU_TIMER_OFFSET = 0x81F4
+ADDR_MAIN_MENU_CURSOR = ADDR_MAIN_MENU + MAIN_MENU_CURSOR_OFFSET
+ADDR_MAIN_MENU_STATE = ADDR_MAIN_MENU + MAIN_MENU_STATE_OFFSET
+ADDR_MAIN_MENU_TIMER = ADDR_MAIN_MENU + MAIN_MENU_TIMER_OFFSET
+ADDR_SUPERVISOR = 0x006C6D18
+SUPERVISOR_STATES_OFFSET = 0x188
+ADDR_GAME_MANAGER = 0x0069BCA0
+GAME_TIME_STOPPED_OFFSET = 0x2C
+GAME_DIFFICULTY_OFFSET = 0x10
+GAME_FLAGS_OFFSET = 0x181F
+GAME_FRAMES_OFFSET = 0x1A30
+GAME_STAGE_OFFSET = 0x1A34
 WINE_CRASH_LOG_TOKENS = (
     "unhandled page fault",
     "unhandled exception",
     "starting debugger",
 )
 WINE_ERROR_LOG_TOKEN = "err:"
+
+
+class MenuNavigationError(RuntimeError):
+    """A pre-stage menu navigation failure that should not become a finding."""
 
 
 def _sha256(path: Path) -> str:
@@ -76,12 +119,19 @@ def _payload_from_case_result(
         if not payload_path.is_file():
             raise FileNotFoundError(f"missing case payload: {payload_path}")
         return seed_name, payload_path.read_bytes(), payload_path, result_path
+    entry_name = case_result.get("entry_name")
+    if isinstance(entry_name, str) and isinstance(override_dir, str):
+        payload_path = Path(override_dir) / "data" / entry_name
+        if not payload_path.is_file():
+            raise FileNotFoundError(f"missing case payload: {payload_path}")
+        return entry_name, payload_path.read_bytes(), payload_path, result_path
 
     payload_path_value = case_result.get("final_payload")
     source_result_value = case_result.get("source_result")
     if not isinstance(payload_path_value, str):
         raise ValueError(
-            "input json is missing semantic override_dir/seed_name or minimized final_payload"
+            "input json is missing semantic override_dir/seed_name, override_dir/entry_name, "
+            "or minimized final_payload"
         )
     payload_path = Path(payload_path_value)
     if not payload_path.is_file():
@@ -128,6 +178,89 @@ def _command_path(path: Path) -> Path:
     return Path(os.path.abspath(os.fspath(path)))
 
 
+def _startup_normalization_script() -> Path:
+    return Path(__file__).with_name("normalize_th06_startup.py")
+
+
+def _startup_normalization_command(*, sudo: Path, gdb: Path, process_id: int) -> list[str]:
+    return [
+        str(sudo),
+        "-n",
+        str(gdb),
+        "-q",
+        "-nx",
+        "-batch",
+        "-p",
+        str(process_id),
+        "-x",
+        str(_startup_normalization_script()),
+    ]
+
+
+def _normalize_retail_startup(
+    *,
+    artifact_dir: Path,
+    sudo: Path,
+    gdb: Path,
+    process_id: int,
+    mode: str,
+    timeout_seconds: float = 60.0,
+) -> dict[str, object]:
+    log_path = artifact_dir / "gdb-startup-normalization.log"
+    if mode == "off":
+        return {
+            "mode": mode,
+            "attempted": False,
+            "normalized": False,
+            "required": False,
+            "log": str(log_path.resolve()),
+        }
+    if mode not in ("auto", "gdb"):
+        raise ValueError("startup normalization mode must be auto, gdb, or off")
+    command = _startup_normalization_command(
+        sudo=sudo,
+        gdb=gdb,
+        process_id=process_id,
+    )
+    required = mode == "gdb"
+    started = time.time()
+    try:
+        completed = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+        output = completed.stdout + completed.stderr
+        timed_out = False
+        returncode = completed.returncode
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        output = f"{type(exc).__name__}: {exc}\n".encode("utf-8", errors="replace")
+        timed_out = isinstance(exc, subprocess.TimeoutExpired)
+        returncode = None
+    log_path.write_bytes(output)
+    normalized = STARTUP_NORMALIZATION_MARKER.encode() in output
+    report = {
+        "mode": mode,
+        "attempted": True,
+        "normalized": normalized,
+        "required": required,
+        "command": command,
+        "returncode": returncode,
+        "timed_out": timed_out,
+        "elapsed_seconds": time.time() - started,
+        "marker": STARTUP_NORMALIZATION_MARKER,
+        "log": str(log_path.resolve()),
+    }
+    if required and not normalized:
+        raise RuntimeError(
+            "TH06 startup normalization failed; see "
+            f"{log_path} for GDB output"
+        )
+    return report
+
+
 def _source_default_config() -> bytes:
     payload = bytearray(CONFIG_SIZE)
     for index, value in enumerate(CONTROLLER_MAPPING):
@@ -147,7 +280,7 @@ def _source_default_config() -> bytes:
     return bytes(payload)
 
 
-def _configure_windowed(payload: bytes) -> bytes:
+def _configure_windowed(payload: bytes, *, color_mode_16bit: int | None = 0) -> bytes:
     if len(payload) != CONFIG_SIZE:
         raise ValueError(f"TH06 config must be {CONFIG_SIZE} bytes")
     version = int.from_bytes(payload[VERSION_OFFSET:VERSION_OFFSET + 4], "little")
@@ -157,13 +290,20 @@ def _configure_windowed(payload: bytes) -> bytes:
         raise ValueError("TH06 windowed byte is invalid")
     if payload[COLOR_MODE_16BIT_OFFSET] not in (0, 1, 0xFF):
         raise ValueError("TH06 color-mode byte is invalid")
+    if color_mode_16bit not in (None, 0, 1, 0xFF):
+        raise ValueError("TH06 requested color-mode byte is invalid")
     configured = bytearray(payload)
-    configured[COLOR_MODE_16BIT_OFFSET] = 0
+    if color_mode_16bit is not None:
+        configured[COLOR_MODE_16BIT_OFFSET] = color_mode_16bit
     configured[WINDOWED_OFFSET] = 1
     return bytes(configured)
 
 
-def _configure_game_directory(game_dir: Path) -> dict[str, object]:
+def _configure_game_directory(
+    game_dir: Path,
+    *,
+    color_mode_16bit: int | None = 0,
+) -> dict[str, object]:
     canonical = game_dir / CANONICAL_CONFIG_NAME
     candidates = sorted(game_dir.glob("*.cfg"))
     initialized = False
@@ -182,7 +322,7 @@ def _configure_game_directory(game_dir: Path) -> dict[str, object]:
             "canonical TH06 cfg is absent and fallback is ambiguous; "
             f"found {len(candidates)} cfg files under {game_dir}"
         )
-    after = _configure_windowed(before)
+    after = _configure_windowed(before, color_mode_16bit=color_mode_16bit)
     changed = initialized or after != before
     if changed:
         path.write_bytes(after)
@@ -196,6 +336,7 @@ def _configure_game_directory(game_dir: Path) -> dict[str, object]:
         "windowed_after": int(after[WINDOWED_OFFSET]),
         "color_mode_16bit_before": int(before[COLOR_MODE_16BIT_OFFSET]),
         "color_mode_16bit_after": int(after[COLOR_MODE_16BIT_OFFSET]),
+        "color_mode_16bit_requested": color_mode_16bit,
     }
 
 
@@ -400,6 +541,21 @@ def _start_xvfb(
     }
 
 
+def _capture_size_from_xvfb_screen_size(screen_size: str) -> str:
+    parts = screen_size.split("x")
+    if len(parts) != 3:
+        raise ValueError("Xvfb screen size must be WIDTHxHEIGHTxDEPTH")
+    width, height, depth = parts
+    for label, value in (("width", width), ("height", height), ("depth", depth)):
+        try:
+            parsed = int(value)
+        except ValueError as exc:
+            raise ValueError(f"Xvfb screen {label} must be an integer") from exc
+        if parsed <= 0:
+            raise ValueError(f"Xvfb screen {label} must be positive")
+    return f"{int(width)}x{int(height)}"
+
+
 def _capture_screenshot(
     *,
     artifact_dir: Path,
@@ -454,6 +610,53 @@ def _decode_rgb24(ffmpeg: Path, image_path: Path) -> bytes:
     return result.stdout
 
 
+def _pixel_profile(rgb24: bytes) -> dict[str, object]:
+    if len(rgb24) % 3:
+        raise ValueError("rgb24 payload length is not divisible by 3")
+    total_pixels = len(rgb24) // 3
+    counts = Counter(rgb24[index:index + 3] for index in range(0, len(rgb24), 3))
+    most_common = counts.most_common(4)
+    top_count = most_common[0][1] if most_common else 0
+    top_two_count = sum(count for _, count in most_common[:2])
+    return {
+        "total_pixels": total_pixels,
+        "unique_colors": len(counts),
+        "top_color_ratio": (top_count / total_pixels) if total_pixels else 0.0,
+        "top_two_color_ratio": (top_two_count / total_pixels) if total_pixels else 0.0,
+        "top_colors": [
+            {
+                "rgb_hex": color.hex(),
+                "count": count,
+                "ratio": (count / total_pixels) if total_pixels else 0.0,
+            }
+            for color, count in most_common
+        ],
+    }
+
+
+def _is_low_information_profile(profile: object) -> bool:
+    if not isinstance(profile, dict):
+        return False
+    unique_colors = profile.get("unique_colors")
+    top_two_ratio = profile.get("top_two_color_ratio")
+    return (
+        isinstance(unique_colors, int)
+        and unique_colors <= LOW_INFORMATION_UNIQUE_COLOR_LIMIT
+        and isinstance(top_two_ratio, (int, float))
+        and float(top_two_ratio) >= LOW_INFORMATION_TOP_TWO_COLOR_RATIO
+    )
+
+
+def _progress_probe_is_low_information(progress_probe: object) -> bool:
+    if not isinstance(progress_probe, dict):
+        return False
+    return (
+        progress_probe.get("identical_pixels") is True
+        and _is_low_information_profile(progress_probe.get("first_pixel_profile"))
+        and _is_low_information_profile(progress_probe.get("second_pixel_profile"))
+    )
+
+
 def _probe_screenshot_progress(
     *,
     ffmpeg: Path,
@@ -467,6 +670,8 @@ def _probe_screenshot_progress(
         raise ValueError("progress probe screenshots decoded to different sizes")
     first_sha256 = hashlib.sha256(first_rgb24).hexdigest()
     second_sha256 = hashlib.sha256(second_rgb24).hexdigest()
+    first_profile = _pixel_profile(first_rgb24)
+    second_profile = _pixel_profile(second_rgb24)
     total_pixels = len(first_rgb24) // 3
     changed_pixels = sum(
         first_rgb24[index:index + 3] != second_rgb24[index:index + 3]
@@ -478,6 +683,8 @@ def _probe_screenshot_progress(
         "second_screenshot": str(second_screenshot.resolve()),
         "first_pixel_sha256": first_sha256,
         "second_pixel_sha256": second_sha256,
+        "first_pixel_profile": first_profile,
+        "second_pixel_profile": second_profile,
         "total_pixels": total_pixels,
         "changed_pixels": changed_pixels,
         "pixel_change_ratio": (changed_pixels / total_pixels) if total_pixels else 0.0,
@@ -497,6 +704,8 @@ def _compare_screenshots(
         raise ValueError("baseline and mutant screenshots decoded to different sizes")
     baseline_sha256 = hashlib.sha256(baseline_rgb24).hexdigest()
     mutant_sha256 = hashlib.sha256(mutant_rgb24).hexdigest()
+    baseline_profile = _pixel_profile(baseline_rgb24)
+    mutant_profile = _pixel_profile(mutant_rgb24)
     total_pixels = len(baseline_rgb24) // 3
     changed_pixels = sum(
         baseline_rgb24[index:index + 3] != mutant_rgb24[index:index + 3]
@@ -507,6 +716,8 @@ def _compare_screenshots(
         "mutant_screenshot": str(mutant_screenshot.resolve()),
         "baseline_pixel_sha256": baseline_sha256,
         "mutant_pixel_sha256": mutant_sha256,
+        "baseline_pixel_profile": baseline_profile,
+        "mutant_pixel_profile": mutant_profile,
         "total_pixels": total_pixels,
         "changed_pixels": changed_pixels,
         "pixel_change_ratio": (changed_pixels / total_pixels) if total_pixels else 0.0,
@@ -613,12 +824,26 @@ def _classify_window_census(census: dict[str, object]) -> dict[str, object]:
         for title in titles
         if any(token in title for token in ("プログラム エラー", "Program Error", "Wine Debugger"))
     ]
+    error_titles = [
+        title
+        for title in titles
+        if title.strip().lower() in ("log", "error")
+    ]
     game_titles = [title for title in titles if "東方紅魔郷" in title]
     if crash_titles:
         return {
             "classification": "crash-dialog",
             "interesting": True,
             "crash_titles": crash_titles,
+            "error_titles": error_titles,
+            "game_titles": game_titles,
+        }
+    if error_titles:
+        return {
+            "classification": "retail-error-dialog",
+            "interesting": False,
+            "crash_titles": [],
+            "error_titles": error_titles,
             "game_titles": game_titles,
         }
     if game_titles:
@@ -626,12 +851,14 @@ def _classify_window_census(census: dict[str, object]) -> dict[str, object]:
             "classification": "game-window-live",
             "interesting": False,
             "crash_titles": [],
+            "error_titles": [],
             "game_titles": game_titles,
         }
     return {
         "classification": "no-game-window",
         "interesting": False,
         "crash_titles": [],
+        "error_titles": [],
         "game_titles": [],
     }
 
@@ -649,12 +876,41 @@ def _classify_control_observation(
         and isinstance(progress_probe, dict)
         and progress_probe.get("identical_pixels") is True
     ):
+        if _progress_probe_is_low_information(progress_probe):
+            return {
+                **oracle,
+                "classification": "game-window-blank-static",
+                "interesting": False,
+                "blank_screen_thresholds": {
+                    "unique_color_limit": LOW_INFORMATION_UNIQUE_COLOR_LIMIT,
+                    "top_two_color_ratio": LOW_INFORMATION_TOP_TWO_COLOR_RATIO,
+                },
+            }
         return {
             **oracle,
             "classification": "game-window-static",
             "interesting": True,
         }
     return oracle
+
+
+def _progress_verification_is_frame_stall(progress_verification: object) -> bool:
+    if not isinstance(progress_verification, dict):
+        return False
+    if progress_verification.get("verified"):
+        return False
+    reasons = progress_verification.get("reasons")
+    if not isinstance(reasons, list):
+        return False
+    reason_set = {reason for reason in reasons if isinstance(reason, str)}
+    frame_reasons = {"frame-not-advanced", "frame-before-minimum"}
+    stage_reasons = {
+        "runtime-unreadable",
+        "still-in-menu",
+        "stage-mismatch",
+        "difficulty-mismatch",
+    }
+    return bool(reason_set & frame_reasons) and not bool(reason_set & stage_reasons)
 
 
 def _summarize_wine_log(log_path: Path, *, max_lines: int = 8) -> dict[str, object]:
@@ -846,7 +1102,10 @@ def _compare_against_clean_baseline(
     ]
     max_ratio = max(ratios) if ratios else None
 
-    if baseline_termination != mutant_termination or baseline_control != mutant_control:
+    if baseline_control == "retail-control-error" or mutant_control == "retail-control-error":
+        classification = "baseline-control-error"
+        interesting = False
+    elif baseline_termination != mutant_termination or baseline_control != mutant_control:
         classification = "baseline-oracle-drift"
         interesting = True
     elif not comparisons:
@@ -907,7 +1166,16 @@ def _augment_run_report_with_baseline(
     if isinstance(sources, list):
         augmented_oracle["sources"] = [*sources, "baseline-compare"]
     classification = baseline_comparison.get("classification")
-    if not augmented_oracle.get("interesting") and classification == "baseline-oracle-drift":
+    if classification == "baseline-equivalent":
+        augmented_oracle["classification"] = "retail-baseline-equivalent"
+        augmented_oracle["interesting"] = False
+    elif classification == "baseline-minor-drift":
+        augmented_oracle["classification"] = "retail-baseline-minor-drift"
+        augmented_oracle["interesting"] = False
+    elif classification == "baseline-control-error":
+        augmented_oracle["classification"] = "retail-baseline-control-error"
+        augmented_oracle["interesting"] = False
+    elif not augmented_oracle.get("interesting") and classification == "baseline-oracle-drift":
         augmented_oracle["classification"] = "retail-baseline-oracle-drift"
         augmented_oracle["interesting"] = True
     wine_log = run_report.get("wine_log")
@@ -990,32 +1258,285 @@ def _tap_key(
     return {"key": key, "hold_seconds": hold_seconds, "settle_seconds": settle_seconds}
 
 
-def _difficulty_moves(target: int) -> list[str]:
-    if target not in range(4):
-        raise ValueError("difficulty must be in 0..3")
-    start = 1
-    downward = (target - start) % 4
-    upward = (start - target) % 4
-    if downward <= upward:
-        return ["Down"] * downward
-    return ["Up"] * upward
+def _read_process_memory(process_id: int, address: int, size: int) -> bytes:
+    fd = os.open(f"/proc/{process_id}/mem", os.O_RDONLY)
+    try:
+        data = os.pread(fd, size, address)
+    finally:
+        os.close(fd)
+    if len(data) != size:
+        raise OSError(
+            f"short read from process {process_id} at 0x{address:08x}: "
+            f"{len(data)} of {size} bytes"
+        )
+    return data
 
 
-def _practice_navigation_steps(stage: int, difficulty: int) -> list[str]:
-    if not 1 <= stage <= 6:
-        raise ValueError("practice stage must be in 1..6")
-    return [
-        "z",
-        "Down",
-        "Down",
-        "z",
-        *_difficulty_moves(difficulty),
-        "z",
-        "z",
-        "z",
-        *(["Down"] * (stage - 1)),
-        "z",
-    ]
+def _i32_at(payload: bytes, offset: int) -> int:
+    return int.from_bytes(payload[offset:offset + 4], "little", signed=True)
+
+
+def _u32_at(payload: bytes, offset: int) -> int:
+    return int.from_bytes(payload[offset:offset + 4], "little", signed=False)
+
+
+def _menu_state_payload(state: tuple[int, int, int]) -> dict[str, object]:
+    menu_state, cursor, timer = state
+    return {
+        "state": menu_state,
+        "state_name": MENU_STATE_NAMES.get(menu_state, "unknown"),
+        "cursor": cursor,
+        "timer": timer,
+    }
+
+
+def _read_menu_state(process_id: int) -> tuple[int, int, int]:
+    block = _read_process_memory(
+        process_id,
+        ADDR_MAIN_MENU_CURSOR,
+        ADDR_MAIN_MENU_TIMER + 4 - ADDR_MAIN_MENU_CURSOR,
+    )
+    return (
+        _i32_at(block, ADDR_MAIN_MENU_STATE - ADDR_MAIN_MENU_CURSOR),
+        _i32_at(block, 0),
+        _i32_at(block, ADDR_MAIN_MENU_TIMER - ADDR_MAIN_MENU_CURSOR),
+    )
+
+
+def _try_read_menu_state(process_id: int) -> dict[str, object]:
+    try:
+        return {"readable": True, **_menu_state_payload(_read_menu_state(process_id))}
+    except OSError as exc:
+        return {
+            "readable": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def _read_retail_runtime_state(process_id: int) -> dict[str, object]:
+    try:
+        game = _read_process_memory(process_id, ADDR_GAME_MANAGER, GAME_STAGE_OFFSET + 4)
+        supervisor = _read_process_memory(
+            process_id,
+            ADDR_SUPERVISOR + SUPERVISOR_STATES_OFFSET,
+            8,
+        )
+    except OSError as exc:
+        return {
+            "readable": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+    game_menu, retry_menu, gameplay_active, completed, practice, demo_mode = (
+        game[GAME_FLAGS_OFFSET:GAME_FLAGS_OFFSET + 6]
+    )
+    in_menu = bool(game_menu or retry_menu or not gameplay_active or demo_mode)
+    return {
+        "readable": True,
+        "frame": _u32_at(game, GAME_FRAMES_OFFSET),
+        "stage": _i32_at(game, GAME_STAGE_OFFSET),
+        "difficulty": _i32_at(game, GAME_DIFFICULTY_OFFSET),
+        "time_stopped": bool(game[GAME_TIME_STOPPED_OFFSET]),
+        "in_menu": in_menu,
+        "flags": {
+            "game_menu": int(game_menu),
+            "retry_menu": int(retry_menu),
+            "gameplay_active": int(gameplay_active),
+            "completed": int(completed),
+            "practice": int(practice),
+            "demo_mode": int(demo_mode),
+        },
+        "supervisor": {
+            "wanted": _i32_at(supervisor, 0),
+            "current": _i32_at(supervisor, 4),
+        },
+    }
+
+
+def _verify_stage_entry(
+    runtime: dict[str, object],
+    *,
+    expected_stage: int,
+    expected_difficulty: int,
+    minimum_frame: int = 1,
+) -> dict[str, object]:
+    reasons: list[str] = []
+    if runtime.get("readable") is not True:
+        reasons.append("runtime-unreadable")
+    if runtime.get("in_menu") is not False:
+        reasons.append("still-in-menu")
+    if runtime.get("stage") != expected_stage:
+        reasons.append("stage-mismatch")
+    if runtime.get("difficulty") != expected_difficulty:
+        reasons.append("difficulty-mismatch")
+    frame = runtime.get("frame")
+    if not isinstance(frame, int) or frame <= 0:
+        reasons.append("frame-not-advanced")
+    elif frame < minimum_frame:
+        reasons.append("frame-before-minimum")
+    return {
+        "verified": not reasons,
+        "expected_stage": expected_stage,
+        "expected_difficulty": expected_difficulty,
+        "minimum_frame": minimum_frame,
+        "reasons": reasons,
+        "runtime": runtime,
+    }
+
+
+def _wait_verified_stage_entry(
+    *,
+    process_id: int,
+    expected_stage: int,
+    expected_difficulty: int,
+    minimum_frame: int,
+    timeout_seconds: float,
+) -> dict[str, object]:
+    started = time.monotonic()
+    deadline = started + timeout_seconds
+    last: dict[str, object] | None = None
+    while time.monotonic() < deadline:
+        last = _verify_stage_entry(
+            _read_retail_runtime_state(process_id),
+            expected_stage=expected_stage,
+            expected_difficulty=expected_difficulty,
+            minimum_frame=minimum_frame,
+        )
+        if last["verified"]:
+            return {
+                **last,
+                "timed_out": False,
+                "wait_elapsed_seconds": time.monotonic() - started,
+            }
+        time.sleep(0.02)
+    if last is None:
+        last = _verify_stage_entry(
+            _read_retail_runtime_state(process_id),
+            expected_stage=expected_stage,
+            expected_difficulty=expected_difficulty,
+            minimum_frame=minimum_frame,
+        )
+    return {
+        **last,
+        "timed_out": True,
+        "wait_elapsed_seconds": time.monotonic() - started,
+    }
+
+
+def _recorded_tap_key(
+    *,
+    process_id: int,
+    xdotool: Path,
+    display: str,
+    window_id: str,
+    key: str,
+) -> dict[str, object]:
+    before = _try_read_menu_state(process_id)
+    step = _tap_key(
+        xdotool=xdotool,
+        display=display,
+        window_id=window_id,
+        key=key,
+        hold_seconds=MENU_TAP_HOLD_SECONDS,
+        settle_seconds=MENU_TAP_SETTLE_SECONDS,
+    )
+    after = _try_read_menu_state(process_id)
+    return {**step, "menu_before": before, "menu_after": after}
+
+
+def _wait_menu_state(
+    process_id: int,
+    wanted: int,
+    *,
+    minimum_timer: int | None = None,
+    timeout_seconds: float = MENU_READ_TIMEOUT_SECONDS,
+) -> tuple[int, int, int]:
+    deadline = time.monotonic() + timeout_seconds
+    last: tuple[int, int, int] | None = None
+    while time.monotonic() < deadline:
+        try:
+            last = _read_menu_state(process_id)
+        except OSError as exc:
+            raise MenuNavigationError(
+                f"cannot read TH06 menu state: {type(exc).__name__}: {exc}"
+            ) from exc
+        if last[0] == wanted and (minimum_timer is None or last[2] >= minimum_timer):
+            return last
+        time.sleep(0.02)
+    rendered = _menu_state_payload(last) if last is not None else None
+    name = MENU_STATE_NAMES.get(wanted, str(wanted))
+    if minimum_timer is None:
+        raise MenuNavigationError(f"menu state {name} not reached; last={rendered}")
+    raise MenuNavigationError(
+        f"menu state {name} did not settle to timer>={minimum_timer}; last={rendered}"
+    )
+
+
+def _select_menu_cursor(
+    *,
+    process_id: int,
+    xdotool: Path,
+    display: str,
+    window_id: str,
+    steps: list[dict[str, object]],
+    state: int,
+    target: int,
+    length: int,
+) -> None:
+    for _ in range(length * 4):
+        _menu_state, cursor, _timer = _wait_menu_state(process_id, state)
+        if cursor == target:
+            return
+        if not 0 <= cursor < length:
+            raise MenuNavigationError(
+                f"menu cursor out of range in state {state}: cursor={cursor}, length={length}"
+            )
+        downward = (target - cursor) % length
+        upward = (cursor - target) % length
+        steps.append(_recorded_tap_key(
+            process_id=process_id,
+            xdotool=xdotool,
+            display=display,
+            window_id=window_id,
+            key="Down" if downward <= upward else "Up",
+        ))
+    raise MenuNavigationError(
+        f"could not select cursor {target} in state {state}; last={_menu_state_payload(_read_menu_state(process_id))}"
+    )
+
+
+def _enter_main_menu(
+    *,
+    process_id: int,
+    xdotool: Path,
+    display: str,
+    window_id: str,
+    steps: list[dict[str, object]],
+) -> None:
+    deadline = time.monotonic() + MENU_READ_TIMEOUT_SECONDS
+    last: tuple[int, int, int] | None = None
+    while time.monotonic() < deadline:
+        try:
+            last = _read_menu_state(process_id)
+        except OSError as exc:
+            raise MenuNavigationError(
+                f"cannot read TH06 menu state: {type(exc).__name__}: {exc}"
+            ) from exc
+        state, _cursor, timer = last
+        if state == MENU_STATE_MAIN_MENU:
+            _wait_menu_state(process_id, MENU_STATE_MAIN_MENU, minimum_timer=20)
+            return
+        if state == MENU_STATE_PRE_INPUT and timer >= 30:
+            steps.append(_recorded_tap_key(
+                process_id=process_id,
+                xdotool=xdotool,
+                display=display,
+                window_id=window_id,
+                key="z",
+            ))
+        time.sleep(0.02)
+    rendered = _menu_state_payload(last) if last is not None else None
+    raise MenuNavigationError(f"main menu not reached; last={rendered}")
 
 
 def _drive_practice_stage(
@@ -1027,69 +1548,206 @@ def _drive_practice_stage(
     xwininfo: Path,
     display: str,
     window_id: str,
+    process_id: int,
     stage: int,
     difficulty: int,
     stage_entry_wait_seconds: float,
+    stage_entry_min_frame: int,
     progress_probe_seconds: float,
+    progress_probe_frames: int,
+    screen_size: str,
 ) -> dict[str, object]:
     screenshots: list[str] = []
     steps: list[dict[str, object]] = []
-    screenshots.append(str(_capture_screenshot(
-        artifact_dir=artifact_dir,
-        ffmpeg=ffmpeg,
-        display=display,
-        name="control-00-title",
-    ).resolve()))
-    for index, key in enumerate(_practice_navigation_steps(stage, difficulty), start=1):
-        steps.append(_tap_key(
-            xdotool=xdotool,
-            display=display,
-            window_id=window_id,
-            key=key,
-        ))
-        if index == 1:
-            name = "control-01-main-menu"
-        elif index == 4:
-            name = "control-02-difficulty"
-        elif index == 7:
-            name = "control-03-character"
-        elif index == 8:
-            name = "control-04-shot"
-        elif index == 9:
-            name = "control-05-stage-select"
-        else:
-            name = None
-        if name is not None:
-            screenshots.append(str(_capture_screenshot(
-                artifact_dir=artifact_dir,
-                ffmpeg=ffmpeg,
-                display=display,
-                name=name,
-            ).resolve()))
-    time.sleep(stage_entry_wait_seconds)
-    final_screenshot = _capture_screenshot(
-        artifact_dir=artifact_dir,
-        ffmpeg=ffmpeg,
-        display=display,
-        name="control-06-after-stage-start",
-    )
-    screenshots.append(str(final_screenshot.resolve()))
-    progress_probe = None
-    if progress_probe_seconds > 0:
-        time.sleep(progress_probe_seconds)
-        progress_screenshot = _capture_screenshot(
+    menu_observations: list[dict[str, object]] = []
+    navigation_error = None
+
+    def capture(name: str) -> Path:
+        screenshot = _capture_screenshot(
             artifact_dir=artifact_dir,
             ffmpeg=ffmpeg,
             display=display,
-            name="control-07-progress-probe",
+            name=name,
+            screen_size=screen_size,
         )
-        screenshots.append(str(progress_screenshot.resolve()))
+        screenshots.append(str(screenshot.resolve()))
+        return screenshot
+
+    def observe_menu(label: str) -> None:
+        menu_observations.append({"label": label, **_try_read_menu_state(process_id)})
+
+    if not 1 <= stage <= 6:
+        raise ValueError("practice stage must be in 1..6")
+    if difficulty not in range(4):
+        raise ValueError("difficulty must be in 0..3")
+    if stage_entry_min_frame <= 0:
+        raise ValueError("stage entry minimum frame must be positive")
+    if progress_probe_frames <= 0:
+        raise ValueError("progress probe frames must be positive")
+
+    capture("control-00-title")
+    try:
+        _enter_main_menu(
+            process_id=process_id,
+            xdotool=xdotool,
+            display=display,
+            window_id=window_id,
+            steps=steps,
+        )
+        observe_menu("main-menu")
+        capture("control-01-main-menu")
+
+        _select_menu_cursor(
+            process_id=process_id,
+            xdotool=xdotool,
+            display=display,
+            window_id=window_id,
+            steps=steps,
+            state=MENU_STATE_MAIN_MENU,
+            target=2,
+            length=8,
+        )
+        steps.append(_recorded_tap_key(
+            process_id=process_id,
+            xdotool=xdotool,
+            display=display,
+            window_id=window_id,
+            key="z",
+        ))
+        _wait_menu_state(process_id, MENU_STATE_DIFFICULTY_SELECT)
+        observe_menu("difficulty-select")
+        capture("control-02-difficulty")
+
+        _select_menu_cursor(
+            process_id=process_id,
+            xdotool=xdotool,
+            display=display,
+            window_id=window_id,
+            steps=steps,
+            state=MENU_STATE_DIFFICULTY_SELECT,
+            target=difficulty,
+            length=4,
+        )
+        steps.append(_recorded_tap_key(
+            process_id=process_id,
+            xdotool=xdotool,
+            display=display,
+            window_id=window_id,
+            key="z",
+        ))
+        _wait_menu_state(process_id, MENU_STATE_CHARACTER_SELECT, minimum_timer=30)
+        observe_menu("character-select")
+        capture("control-03-character")
+
+        _select_menu_cursor(
+            process_id=process_id,
+            xdotool=xdotool,
+            display=display,
+            window_id=window_id,
+            steps=steps,
+            state=MENU_STATE_CHARACTER_SELECT,
+            target=0,
+            length=2,
+        )
+        steps.append(_recorded_tap_key(
+            process_id=process_id,
+            xdotool=xdotool,
+            display=display,
+            window_id=window_id,
+            key="z",
+        ))
+        _wait_menu_state(process_id, MENU_STATE_SHOT_SELECT, minimum_timer=30)
+        observe_menu("shot-select")
+        capture("control-04-shot")
+
+        _select_menu_cursor(
+            process_id=process_id,
+            xdotool=xdotool,
+            display=display,
+            window_id=window_id,
+            steps=steps,
+            state=MENU_STATE_SHOT_SELECT,
+            target=0,
+            length=2,
+        )
+        steps.append(_recorded_tap_key(
+            process_id=process_id,
+            xdotool=xdotool,
+            display=display,
+            window_id=window_id,
+            key="z",
+        ))
+        _wait_menu_state(process_id, MENU_STATE_PRACTICE_STAGE_SELECT, minimum_timer=30)
+        observe_menu("practice-stage-select")
+        capture("control-05-stage-select")
+
+        _select_menu_cursor(
+            process_id=process_id,
+            xdotool=xdotool,
+            display=display,
+            window_id=window_id,
+            steps=steps,
+            state=MENU_STATE_PRACTICE_STAGE_SELECT,
+            target=stage - 1,
+            length=6,
+        )
+        steps.append(_recorded_tap_key(
+            process_id=process_id,
+            xdotool=xdotool,
+            display=display,
+            window_id=window_id,
+            key="z",
+        ))
+    except MenuNavigationError as exc:
+        navigation_error = str(exc)
+
+    if navigation_error is None:
+        stage_verification = _wait_verified_stage_entry(
+            process_id=process_id,
+            expected_stage=stage,
+            expected_difficulty=difficulty,
+            minimum_frame=stage_entry_min_frame,
+            timeout_seconds=stage_entry_wait_seconds,
+        )
+    else:
+        stage_verification = _verify_stage_entry(
+            _read_retail_runtime_state(process_id),
+            expected_stage=stage,
+            expected_difficulty=difficulty,
+            minimum_frame=stage_entry_min_frame,
+        )
+    final_screenshot = capture("control-06-after-stage-start")
+
+    progress_probe = None
+    progress_runtime = None
+    progress_verification = None
+    if navigation_error is None and stage_verification["verified"] and progress_probe_seconds > 0:
+        runtime = stage_verification.get("runtime")
+        frame = runtime.get("frame") if isinstance(runtime, dict) else None
+        minimum_progress_frame = (
+            int(frame) + progress_probe_frames
+            if isinstance(frame, int)
+            else stage_entry_min_frame + progress_probe_frames
+        )
+        progress_verification = _wait_verified_stage_entry(
+            process_id=process_id,
+            expected_stage=stage,
+            expected_difficulty=difficulty,
+            minimum_frame=minimum_progress_frame,
+            timeout_seconds=progress_probe_seconds,
+        )
+        progress_screenshot = capture("control-07-progress-probe")
         progress_probe = _probe_screenshot_progress(
             ffmpeg=ffmpeg,
             first_screenshot=final_screenshot,
             second_screenshot=progress_screenshot,
-            probe_seconds=progress_probe_seconds,
+            probe_seconds=(
+                float(progress_verification.get("wait_elapsed_seconds"))
+                if isinstance(progress_verification.get("wait_elapsed_seconds"), (int, float))
+                else progress_probe_seconds
+            ),
         )
+        progress_runtime = progress_verification.get("runtime")
     census = _capture_window_census(
         artifact_dir=artifact_dir,
         display=display,
@@ -1098,18 +1756,80 @@ def _drive_practice_stage(
         xwininfo=xwininfo,
     )
     oracle = _classify_control_observation(census, progress_probe=progress_probe)
+    if navigation_error is not None:
+        oracle = {
+            **oracle,
+            "classification": "retail-control-error",
+            "interesting": False,
+            "navigation_error": navigation_error,
+        }
+    elif not stage_verification["verified"] and oracle.get("classification") not in (
+        "crash-dialog",
+        "retail-error-dialog",
+        "no-game-window",
+    ):
+        oracle = {
+            **oracle,
+            "classification": "stage-entry-unverified",
+            "interesting": False,
+            "stage_entry_verification": stage_verification,
+        }
+    elif (
+        isinstance(progress_verification, dict)
+        and not progress_verification.get("verified")
+        and any(
+            reason
+            in {
+                "runtime-unreadable",
+                "still-in-menu",
+                "stage-mismatch",
+                "difficulty-mismatch",
+            }
+            for reason in progress_verification.get("reasons", [])
+        )
+        and oracle.get("classification") not in (
+            "crash-dialog",
+            "retail-error-dialog",
+            "no-game-window",
+        )
+    ):
+        oracle = {
+            **oracle,
+            "classification": "stage-progress-unverified",
+            "interesting": False,
+            "progress_verification": progress_verification,
+        }
+    elif _progress_verification_is_frame_stall(progress_verification) and oracle.get("classification") not in (
+        "crash-dialog",
+        "retail-error-dialog",
+        "no-game-window",
+    ):
+        oracle = {
+            **oracle,
+            "classification": "retail-frame-stall",
+            "interesting": True,
+            "progress_verification": progress_verification,
+        }
     return {
         "mode": "practice-stage",
         "practice_stage": stage,
         "difficulty": difficulty,
         "window_id": window_id,
+        "process_id": process_id,
         "stage_entry_wait_seconds": stage_entry_wait_seconds,
+        "stage_entry_min_frame": stage_entry_min_frame,
         "progress_probe_seconds": progress_probe_seconds,
+        "progress_probe_frames": progress_probe_frames,
+        "screen_size": screen_size,
         "entered_stage_screenshot": str(final_screenshot.resolve()),
+        "stage_entry_verification": stage_verification,
+        "progress_verification": progress_verification,
+        "progress_runtime": progress_runtime,
         "window_census": census,
         "progress_probe": progress_probe,
         "oracle": oracle,
         "steps": steps,
+        "menu_observations": menu_observations,
         "screenshots": screenshots,
     }
 
@@ -1122,6 +1842,8 @@ def _run_retail_with_practice_control(
     wine: Path,
     wineboot: Path,
     wineserver: Path,
+    sudo: Path,
+    gdb: Path,
     xvfb: Path,
     xdotool: Path,
     xprop: Path,
@@ -1133,7 +1855,12 @@ def _run_retail_with_practice_control(
     difficulty: int,
     startup_seconds: float,
     stage_entry_wait_seconds: float,
+    stage_entry_min_frame: int,
     progress_probe_seconds: float,
+    progress_probe_frames: int,
+    xvfb_screen_size: str,
+    startup_normalization: str,
+    startup_normalization_delay_seconds: float,
     dry_run: bool,
 ) -> dict[str, object]:
     executable = _retail_executable(game_dir)
@@ -1157,7 +1884,12 @@ def _run_retail_with_practice_control(
                 "difficulty": difficulty,
                 "startup_seconds": startup_seconds,
                 "stage_entry_wait_seconds": stage_entry_wait_seconds,
+                "stage_entry_min_frame": stage_entry_min_frame,
                 "progress_probe_seconds": progress_probe_seconds,
+                "progress_probe_frames": progress_probe_frames,
+                "xvfb_screen_size": xvfb_screen_size,
+                "startup_normalization": startup_normalization,
+                "startup_normalization_delay_seconds": startup_normalization_delay_seconds,
             },
         }
 
@@ -1169,12 +1901,14 @@ def _run_retail_with_practice_control(
     oracle_terminal = False
     observed_returncode = None
     cleanup_killed_process = False
+    startup_normalization_report = None
     started = time.time()
     try:
         xvfb_process, xvfb_report = _start_xvfb(
             artifact_dir=artifact_dir,
             xvfb=xvfb,
             display=display,
+            screen_size=xvfb_screen_size,
         )
         with prefix_log_path.open("wb") as prefix_log:
             prepared = subprocess.run(
@@ -1198,7 +1932,23 @@ def _run_retail_with_practice_control(
                 stdout=game_log_handle,
                 stderr=subprocess.STDOUT,
             )
-            time.sleep(startup_seconds)
+            if startup_normalization == "off":
+                time.sleep(startup_seconds)
+            else:
+                time.sleep(startup_normalization_delay_seconds)
+                startup_normalization_report = _normalize_retail_startup(
+                    artifact_dir=artifact_dir,
+                    sudo=sudo,
+                    gdb=gdb,
+                    process_id=game_process.pid,
+                    mode=startup_normalization,
+                )
+                remaining_startup_seconds = max(
+                    0.0,
+                    startup_seconds - startup_normalization_delay_seconds,
+                )
+                if remaining_startup_seconds > 0:
+                    time.sleep(remaining_startup_seconds)
             window_id = _wait_for_window(
                 xdotool=xdotool,
                 display=display,
@@ -1213,10 +1963,14 @@ def _run_retail_with_practice_control(
                 xwininfo=xwininfo,
                 display=display,
                 window_id=window_id,
+                process_id=game_process.pid,
                 stage=practice_stage,
                 difficulty=difficulty,
                 stage_entry_wait_seconds=stage_entry_wait_seconds,
+                stage_entry_min_frame=stage_entry_min_frame,
                 progress_probe_seconds=progress_probe_seconds,
+                progress_probe_frames=progress_probe_frames,
+                screen_size=_capture_size_from_xvfb_screen_size(xvfb_screen_size),
             )
             oracle = control_report.get("oracle") if isinstance(control_report, dict) else None
             classification = oracle.get("classification") if isinstance(oracle, dict) else None
@@ -1298,6 +2052,7 @@ def _run_retail_with_practice_control(
         "timed_out": timed_out,
         "elapsed_seconds": time.time() - started,
         "dry_run": False,
+        "startup_normalization": startup_normalization_report,
         "termination_reason": final_oracle["classification"],
         "retail_signature_key": retail_signature_key(
             final_oracle["classification"],
@@ -1333,6 +2088,16 @@ def parse_args() -> argparse.Namespace:
         default=Path(shutil.which("wineserver") or "wineserver"),
     )
     parser.add_argument(
+        "--sudo",
+        type=Path,
+        default=Path(shutil.which("sudo") or "sudo"),
+    )
+    parser.add_argument(
+        "--gdb",
+        type=Path,
+        default=Path(shutil.which("gdb") or "gdb"),
+    )
+    parser.add_argument(
         "--xvfb-run",
         type=Path,
         default=Path(shutil.which("xvfb-run") or "xvfb-run"),
@@ -1363,6 +2128,18 @@ def parse_args() -> argparse.Namespace:
         default=Path(shutil.which("ffmpeg") or "ffmpeg"),
     )
     parser.add_argument("--display", type=str)
+    parser.add_argument(
+        "--xvfb-screen-size",
+        default=DEFAULT_SCREEN_SIZE,
+        help="Xvfb screen geometry as WIDTHxHEIGHTxDEPTH; default is 1024x768x24",
+    )
+    parser.add_argument(
+        "--color-mode-16bit",
+        type=_parse_color_mode_16bit,
+        default=0,
+        metavar="{0,1,255,preserve}",
+        help="TH06 cfg color-mode byte to write; use preserve to keep the source byte",
+    )
     parser.add_argument("--timeout-seconds", type=float, default=10.0)
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -1372,29 +2149,210 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--shot-type", type=int, choices=range(2), default=0)
     parser.add_argument("--startup-seconds", type=float, default=DEFAULT_STARTUP_SECONDS)
     parser.add_argument(
+        "--startup-normalization",
+        choices=("auto", "gdb", "off"),
+        default="auto",
+        help=(
+            "normalize TH06's Wine-only first-frame catch-up with GDB; "
+            "auto records failure and continues, gdb fails closed, off disables it"
+        ),
+    )
+    parser.add_argument(
+        "--startup-normalization-delay-seconds",
+        type=float,
+        default=DEFAULT_STARTUP_NORMALIZATION_DELAY_SECONDS,
+        help="seconds to wait after process launch before the GDB startup normalization attach",
+    )
+    parser.add_argument(
         "--stage-entry-wait-seconds",
         type=float,
         default=DEFAULT_STAGE_ENTRY_WAIT_SECONDS,
+        help="maximum wall-clock seconds to wait for the requested stage frame",
+    )
+    parser.add_argument(
+        "--stage-entry-min-frame",
+        type=int,
+        default=DEFAULT_STAGE_ENTRY_MIN_FRAME,
+        help="capture the entered-stage screenshot after this TH06 game frame",
     )
     parser.add_argument(
         "--progress-probe-seconds",
         type=float,
         default=DEFAULT_PROGRESS_PROBE_SECONDS,
+        help="maximum wall-clock seconds to wait for the progress probe frame",
+    )
+    parser.add_argument(
+        "--progress-probe-frames",
+        type=int,
+        default=DEFAULT_PROGRESS_PROBE_FRAMES,
+        help="capture the progress probe after this many additional TH06 game frames",
     )
     parser.add_argument(
         "--compare-clean-baseline",
         action="store_true",
         help="run an unmodified retail control under the same practice setup and compare screenshots",
     )
+    parser.add_argument(
+        "--expect-classification",
+        help="require the final retail oracle classification, for example crash-dialog or game-window-static",
+    )
+    parser.add_argument(
+        "--expect-signature-key",
+        help="require the final retail_signature_key written by the oracle",
+    )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="run the same retail confirmation in fresh isolated attempts",
+    )
+    parser.add_argument(
+        "--require",
+        type=int,
+        help="minimum matching attempts required when an expectation is set; defaults to all repeats",
+    )
     return parser.parse_args()
+
+
+def _parse_color_mode_16bit(value: str) -> int | None:
+    if value == "preserve":
+        return None
+    try:
+        parsed = int(value, 0)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "--color-mode-16bit must be 0, 1, 255, or preserve"
+        ) from exc
+    if parsed not in (0, 1, 0xFF):
+        raise argparse.ArgumentTypeError(
+            "--color-mode-16bit must be 0, 1, 255, or preserve"
+        )
+    return parsed
 
 
 def _write_report(path: Path, report: dict[str, object]) -> None:
     path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
-def main() -> int:
-    args = parse_args()
+def _expectation_requested(args: argparse.Namespace) -> bool:
+    return bool(args.expect_classification or args.expect_signature_key)
+
+
+def _required_matches(args: argparse.Namespace) -> int:
+    if not _expectation_requested(args):
+        return 0
+    return args.require if args.require is not None else args.repeat
+
+
+def _validate_repeat_args(args: argparse.Namespace) -> None:
+    if args.repeat < 1:
+        raise ValueError("--repeat must be at least 1")
+    if args.require is not None:
+        if args.require < 1:
+            raise ValueError("--require must be at least 1")
+        if args.require > args.repeat:
+            raise ValueError("--require cannot exceed --repeat")
+        if not _expectation_requested(args):
+            raise ValueError("--require needs --expect-classification or --expect-signature-key")
+
+
+def _report_run(report: dict[str, object]) -> dict[str, object] | None:
+    run = report.get("run")
+    return run if isinstance(run, dict) else None
+
+
+def _report_oracle(report: dict[str, object]) -> dict[str, object] | None:
+    run = _report_run(report)
+    if run is None:
+        return None
+    oracle = run.get("oracle")
+    return oracle if isinstance(oracle, dict) else None
+
+
+def _report_classification(report: dict[str, object]) -> str | None:
+    oracle = _report_oracle(report)
+    if oracle is not None and isinstance(oracle.get("classification"), str):
+        return str(oracle["classification"])
+    run = _report_run(report)
+    if run is not None and isinstance(run.get("termination_reason"), str):
+        return str(run["termination_reason"])
+    return None
+
+
+def _report_signature_key(report: dict[str, object]) -> str | None:
+    run = _report_run(report)
+    if run is None:
+        return None
+    value = run.get("retail_signature_key")
+    return value if isinstance(value, str) else None
+
+
+def _expected_oracle_config(args: argparse.Namespace) -> dict[str, object] | None:
+    if not _expectation_requested(args):
+        return None
+    return {
+        "classification": args.expect_classification,
+        "retail_signature_key": args.expect_signature_key,
+    }
+
+
+def _evaluate_retail_expectation(
+    report: dict[str, object],
+    *,
+    expect_classification: str | None,
+    expect_signature_key: str | None,
+) -> dict[str, object]:
+    observed_classification = _report_classification(report)
+    observed_signature_key = _report_signature_key(report)
+    checks: list[dict[str, object]] = []
+    if expect_classification is not None:
+        checks.append(
+            {
+                "field": "classification",
+                "expected": expect_classification,
+                "observed": observed_classification,
+                "passed": observed_classification == expect_classification,
+            }
+        )
+    if expect_signature_key is not None:
+        checks.append(
+            {
+                "field": "retail_signature_key",
+                "expected": expect_signature_key,
+                "observed": observed_signature_key,
+                "passed": observed_signature_key == expect_signature_key,
+            }
+        )
+    return {
+        "enabled": bool(checks),
+        "passed": all(bool(check["passed"]) for check in checks) if checks else True,
+        "checks": checks,
+        "observed_classification": observed_classification,
+        "observed_retail_signature_key": observed_signature_key,
+    }
+
+
+def _attempt_passed(attempt: dict[str, object]) -> bool:
+    expectation = attempt.get("expectation")
+    return isinstance(expectation, dict) and bool(expectation.get("passed"))
+
+
+def _repeat_artifact_dir(args: argparse.Namespace) -> Path:
+    if args.artifact_dir is not None:
+        return args.artifact_dir.resolve()
+    result_path = args.result.resolve()
+    case_result = _load_case_result(result_path)
+    seed_name, _, _, _ = _payload_from_case_result(case_result, result_path)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return ARTIFACTS_DIR / "retail-confirmation" / f"{seed_name}-{stamp}-repeat"
+
+
+def _run_confirmation_once(
+    args: argparse.Namespace,
+    *,
+    artifact_dir_override: Path | None = None,
+    print_report: bool = True,
+) -> dict[str, object]:
     result_path = args.result.resolve()
     if not result_path.is_file():
         raise FileNotFoundError(f"missing result json: {result_path}")
@@ -1405,10 +2363,17 @@ def main() -> int:
         raise ValueError("--timeout-seconds must be positive")
     if (
         args.startup_seconds <= 0
+        or args.startup_normalization_delay_seconds <= 0
         or args.stage_entry_wait_seconds <= 0
+        or args.stage_entry_min_frame <= 0
         or args.progress_probe_seconds < 0
+        or args.progress_probe_frames <= 0
     ):
-        raise ValueError("startup/stage-entry waits must be positive and progress-probe must be non-negative")
+        raise ValueError(
+            "startup/startup-normalization/stage-entry waits and frame counts "
+            "must be positive; progress-probe seconds must be non-negative"
+        )
+    _capture_size_from_xvfb_screen_size(args.xvfb_screen_size)
     if args.practice_stage is not None and (args.character != 0 or args.shot_type != 0):
         raise ValueError("retail practice automation currently supports Reimu A only")
     if args.compare_clean_baseline:
@@ -1421,7 +2386,7 @@ def main() -> int:
     seed_name, payload, payload_path, source_result = _payload_from_case_result(
         case_result, result_path
     )
-    artifact_dir = (args.artifact_dir or _default_artifact_dir(seed_name)).resolve()
+    artifact_dir = (artifact_dir_override or args.artifact_dir or _default_artifact_dir(seed_name)).resolve()
     ensure_directory(artifact_dir)
     game_dir = artifact_dir / "game"
     prefix = artifact_dir / "prefix"
@@ -1429,6 +2394,8 @@ def main() -> int:
     wine = _command_path(args.wine)
     wineboot = _command_path(args.wineboot)
     wineserver = _command_path(args.wineserver)
+    sudo = _command_path(args.sudo)
+    gdb = _command_path(args.gdb)
     xvfb = _command_path(args.xvfb)
     xdotool = _command_path(args.xdotool)
     xprop = _command_path(args.xprop)
@@ -1446,7 +2413,10 @@ def main() -> int:
         baseline_display = _choose_display()
         if not baseline_game_dir.exists():
             _copy_game_tree(source_game_dir, baseline_game_dir)
-        baseline_config_report = _configure_game_directory(baseline_game_dir)
+        baseline_config_report = _configure_game_directory(
+            baseline_game_dir,
+            color_mode_16bit=args.color_mode_16bit,
+        )
         baseline_unlock_score_report = _restore_full_unlock_score(baseline_game_dir)
         baseline_run_report = _run_retail_with_practice_control(
             game_dir=baseline_game_dir,
@@ -1455,6 +2425,8 @@ def main() -> int:
             wine=wine,
             wineboot=wineboot,
             wineserver=wineserver,
+            sudo=sudo,
+            gdb=gdb,
             xvfb=xvfb,
             xdotool=xdotool,
             xprop=xprop,
@@ -1466,7 +2438,12 @@ def main() -> int:
             difficulty=args.difficulty,
             startup_seconds=args.startup_seconds,
             stage_entry_wait_seconds=args.stage_entry_wait_seconds,
+            stage_entry_min_frame=args.stage_entry_min_frame,
             progress_probe_seconds=args.progress_probe_seconds,
+            progress_probe_frames=args.progress_probe_frames,
+            xvfb_screen_size=args.xvfb_screen_size,
+            startup_normalization=args.startup_normalization,
+            startup_normalization_delay_seconds=args.startup_normalization_delay_seconds,
             dry_run=False,
         )
         baseline_report = {
@@ -1477,6 +2454,7 @@ def main() -> int:
             "game_dir": str(baseline_game_dir),
             "wine_prefix": str(baseline_prefix),
             "display": baseline_display,
+            "xvfb_screen_size": args.xvfb_screen_size,
             "seed_name": seed_name,
             "payload_path": None,
             "payload_size": None,
@@ -1489,14 +2467,17 @@ def main() -> int:
             "limitations": [
                 "This is a clean retail control run under the same practice automation and timing.",
                 "Practice automation currently covers only Reimu A via X11 keyboard injection.",
-                "Route play, dialogue skipping, and memory-based retail state sensing are not implemented yet.",
+                "Route play and dialogue skipping are not implemented yet.",
             ],
         }
         _write_report(baseline_artifact_dir / "report.json", baseline_report)
 
     if not game_dir.exists():
         _copy_game_tree(source_game_dir, game_dir)
-    config_report = _configure_game_directory(game_dir)
+    config_report = _configure_game_directory(
+        game_dir,
+        color_mode_16bit=args.color_mode_16bit,
+    )
     unlock_score_report = _restore_full_unlock_score(game_dir)
     patched_archives = [
         _patch_stage_archive(path, entry_name=seed_name, payload=payload)
@@ -1514,6 +2495,8 @@ def main() -> int:
                 wine=wine,
                 wineboot=wineboot,
                 wineserver=wineserver,
+                sudo=sudo,
+                gdb=gdb,
                 xvfb=xvfb,
                 xdotool=xdotool,
                 xprop=xprop,
@@ -1525,7 +2508,12 @@ def main() -> int:
                 difficulty=args.difficulty,
                 startup_seconds=args.startup_seconds,
                 stage_entry_wait_seconds=args.stage_entry_wait_seconds,
+                stage_entry_min_frame=args.stage_entry_min_frame,
                 progress_probe_seconds=args.progress_probe_seconds,
+                progress_probe_frames=args.progress_probe_frames,
+                xvfb_screen_size=args.xvfb_screen_size,
+                startup_normalization=args.startup_normalization,
+                startup_normalization_delay_seconds=args.startup_normalization_delay_seconds,
                 dry_run=args.dry_run,
             )
         else:
@@ -1570,6 +2558,7 @@ def main() -> int:
         "game_dir": str(game_dir),
         "wine_prefix": str(prefix),
         "display": display,
+        "xvfb_screen_size": args.xvfb_screen_size,
         "seed_name": seed_name,
         "payload_path": str(payload_path),
         "payload_size": len(payload),
@@ -1591,11 +2580,73 @@ def main() -> int:
         "limitations": [
             "Launch-only mode still stops at process startup and does not prove stage ECL reached.",
             "Practice automation currently covers only Reimu A via X11 keyboard injection.",
-            "Route play, dialogue skipping, and memory-based retail state sensing are not implemented yet.",
+            "Route play and dialogue skipping are not implemented yet.",
         ],
     }
+    expected_oracle = _expected_oracle_config(args)
+    if expected_oracle is not None:
+        report["expected_oracle"] = expected_oracle
+        report["expectation"] = _evaluate_retail_expectation(
+            report,
+            expect_classification=args.expect_classification,
+            expect_signature_key=args.expect_signature_key,
+        )
     _write_report(artifact_dir / "report.json", report)
-    print(json.dumps(report, indent=2))
+    if print_report:
+        print(json.dumps(report, indent=2))
+    return report
+
+
+def main() -> int:
+    args = parse_args()
+    _validate_repeat_args(args)
+    if args.repeat == 1:
+        report = _run_confirmation_once(args)
+        expectation = report.get("expectation")
+        if isinstance(expectation, dict) and expectation.get("enabled") and not expectation.get("passed"):
+            return 1
+        return 0
+
+    artifact_dir = _repeat_artifact_dir(args)
+    ensure_directory(artifact_dir)
+    attempts: list[dict[str, object]] = []
+    for run_index in range(1, args.repeat + 1):
+        run_artifact_dir = artifact_dir / f"run-{run_index:03d}"
+        report = _run_confirmation_once(
+            args,
+            artifact_dir_override=run_artifact_dir,
+            print_report=False,
+        )
+        expectation = report.get("expectation")
+        attempts.append(
+            {
+                "attempt": run_index,
+                "artifact_dir": str(run_artifact_dir.resolve()),
+                "report": str((run_artifact_dir / "report.json").resolve()),
+                "classification": _report_classification(report),
+                "retail_signature_key": _report_signature_key(report),
+                "expectation": expectation if isinstance(expectation, dict) else None,
+            }
+        )
+
+    expectation_enabled = _expectation_requested(args)
+    passed_attempts = sum(int(_attempt_passed(attempt)) for attempt in attempts)
+    required = _required_matches(args)
+    summary = {
+        "schema": "danmakufuzz-retail-confirmation-repeat-v1",
+        "artifact_dir": str(artifact_dir.resolve()),
+        "source_result": str(args.result.resolve()),
+        "repeat": args.repeat,
+        "require": required if expectation_enabled else None,
+        "expected_oracle": _expected_oracle_config(args),
+        "passed_attempts": passed_attempts if expectation_enabled else None,
+        "expectation_passed": (passed_attempts >= required) if expectation_enabled else None,
+        "attempts": attempts,
+    }
+    _write_report(artifact_dir / "report.json", summary)
+    print(json.dumps(summary, indent=2))
+    if expectation_enabled and passed_attempts < required:
+        return 1
     return 0
 
 

@@ -56,13 +56,13 @@ Tracked compact payload patches:
 Current local evidence:
 
 - source exploration grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-core-grid-b/summary.json`
+  `artifacts/semantic-exploration-grid/20260822T-core-grid-b/summary.json`
 - cluster summary for the grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-clusters/20260822T-core-grid-b/summary.json`
+  `artifacts/semantic-clusters/20260822T-core-grid-b/summary.json`
 - dedicated trace-basin proof for these three exact values:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/20260822T-stage5-jump-offset-shared-route-warp-basin/summary.json`
+  `artifacts/semantic-trace-basins/20260822T-stage5-jump-offset-shared-route-warp-basin/summary.json`
 - August 22, 2026 retail smoke for the `jump-offset=-222` representative:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage5-jump-offset-shared-route-warp-basin/retail/report.json`
+  `artifacts/findings/semantic-stage5-jump-offset-shared-route-warp-basin/retail/report.json`
 
 Current interpretation:
 

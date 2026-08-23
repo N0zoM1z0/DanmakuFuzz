@@ -60,6 +60,7 @@ class EclFile:
     timeline_offsets: tuple[int, int, int]
     timeline: list[TimelineInstruction]
     subs: list[EclSubroutine]
+    source_payload: bytes | None = field(default=None, repr=False, compare=False)
 
     def clone(self) -> Self:
         return copy.deepcopy(self)

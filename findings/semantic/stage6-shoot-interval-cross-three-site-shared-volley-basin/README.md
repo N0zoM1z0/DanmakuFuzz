@@ -74,11 +74,11 @@ Tracked compact payload patches:
 Current local evidence:
 
 - source family sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-time-cross-scout-a/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-time-cross-scout-a/summary.json`
 - cluster summary for the scout:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-clusters/20260822T-time-cross-scout-a/summary.json`
+  `artifacts/semantic-clusters/20260822T-time-cross-scout-a/summary.json`
 - August 22, 2026 retail smoke for `shoot-interval-cross-30-0`:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-shoot-interval-cross-three-site-shared-volley-basin/retail/report.json`
+  `artifacts/findings/semantic-stage6-shoot-interval-cross-three-site-shared-volley-basin/retail/report.json`
 
 Why this one matters:
 

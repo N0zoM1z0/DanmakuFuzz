@@ -49,11 +49,11 @@ ignored artifact output or the current exploration sampler internals.
 Current local evidence:
 
 - short cross-field scout sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-bullet-count-cross-scout-a/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-bullet-count-cross-scout-a/summary.json`
 - long exact-rerun sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exact-rerun/20260822T-bullet-count-cross-long-b/report.json`
+  `artifacts/semantic-exact-rerun/20260822T-bullet-count-cross-long-b/report.json`
 - long-run source case:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exact-rerun/20260822T-bullet-count-cross-long-b/0007-bullet-count-cross-sampled-24-64-s00-i0011/result.json`
+  `artifacts/semantic-exact-rerun/20260822T-bullet-count-cross-long-b/0007-bullet-count-cross-sampled-24-64-s00-i0011/result.json`
 
 Why this one matters:
 

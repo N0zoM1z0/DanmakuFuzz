@@ -1,0 +1,34 @@
+{
+  "schema": "danmakufuzz-finding-v1",
+  "id": "semantic/replay-action-stream-metamorphic-equivalence",
+  "title": "Replay action-stream metamorphic equivalence",
+  "kind": "semantic-replay-metamorphic-equivalence",
+  "evidence_level": "HEADLESS_REPRODUCED",
+  "headless_runs": {
+    "pass": 35,
+    "total": 35,
+    "note": "9 synthetic Stage 6 cases, 13 fairysvoice-th6-001 Stage 4 cases, and 13 gensokyo-th6-804 Stage 6 cases were trace/state equivalent."
+  },
+  "retail_runs": {
+    "pass": 0,
+    "total": 0
+  },
+  "payload_sha256": null,
+  "model_revision": "th06-headless:4a9df00487c44985739da4af0e795f47460d0e00",
+  "retail_exe_sha256": null,
+  "expected_oracle": {
+    "classification": "equivalent",
+    "metamorphic_relation": "replay-action-stream-equivalence"
+  },
+  "triage_status": "format-observation",
+  "evidence": [
+    "artifacts/checks/replay-metamorphic-stage6-20260823/campaign.json",
+    "artifacts/checks/replay-metamorphic-public-fairysvoice001-stage4-20260823/campaign.json",
+    "artifacts/checks/replay-metamorphic-public-gensokyo804-stage6-20260823/campaign.json"
+  ],
+  "notes": [
+    "Alternate replay encodings that expand to the same bounded action stream produced identical headless runtime traces and state projections.",
+    "The evaluator pads short replay action streams with zeroes when comparing bounded equivalence, matching the replay end-of-input semantics observed during testing.",
+    "This is a negative-control observation, not a bug candidate."
+  ]
+}

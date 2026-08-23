@@ -48,6 +48,7 @@ def evaluate_pbg3_payload(payload: bytes, baseline_hashes: dict[str, str]) -> di
         return {
             "classification": "parse-error",
             "interesting": False,
+            "evidence_level": "FORMAT_REJECTED",
             "error_type": type(exc).__name__,
             "error_message": str(exc),
         }
@@ -63,6 +64,8 @@ def evaluate_pbg3_payload(payload: bytes, baseline_hashes: dict[str, str]) -> di
         return {
             "classification": "extract-error",
             "interesting": True,
+            "evidence_level": "MODEL_PARSER_ONLY",
+            "observation_kind": "accepted-metadata-extraction-error",
             "error_type": type(exc).__name__,
             "error_message": str(exc),
             "entry_count": len(archive.entries),
@@ -82,7 +85,9 @@ def evaluate_pbg3_payload(payload: bytes, baseline_hashes: dict[str, str]) -> di
     equivalent = not missing_entries and not extra_entries and not changed_entries
     return {
         "classification": "accepted",
-        "interesting": True,
+        "interesting": not equivalent,
+        "evidence_level": "FORMAT_CHARACTERIZATION" if equivalent else "MODEL_PARSER_ONLY",
+        "observation_kind": "format-equivalent-acceptance" if equivalent else "accepted-with-drift",
         "entry_count": len(archive.entries),
         "parsed_filenames": _sample_strings([entry.filename for entry in archive.entries]),
         "missing_entries": _sample_strings(missing_entries),

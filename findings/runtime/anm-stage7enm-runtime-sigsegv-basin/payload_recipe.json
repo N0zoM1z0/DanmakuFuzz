@@ -1,6 +1,6 @@
 {
   "schema": "danmakufuzz-runtime-sigsegv-basin-v1",
-  "archive": "/home/yann/yann/touhou/DanmakuFuzz/reference/retail/game/th06/紅魔郷ST.DAT",
+  "archive": "reference/retail/game/th06/紅魔郷ST.DAT",
   "entry": "stg7enm.anm",
   "expected_returncode": -11,
   "expected_trace_lines": 440,

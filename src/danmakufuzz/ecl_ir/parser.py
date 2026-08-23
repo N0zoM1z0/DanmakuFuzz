@@ -116,4 +116,5 @@ def parse_ecl(data: bytes) -> EclFile:
         timeline_offsets=timeline_offsets,
         timeline=timeline,
         subs=subs,
+        source_payload=data,
     )

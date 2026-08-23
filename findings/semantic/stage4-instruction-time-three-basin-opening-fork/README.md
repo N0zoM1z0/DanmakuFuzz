@@ -89,13 +89,13 @@ Tracked compact payload patches:
 Current local evidence:
 
 - multiseed family sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260823T-instruction-time-multiseed-scout-a/summary.json`
+  `artifacts/semantic-family-sweep/20260823T-instruction-time-multiseed-scout-a/summary.json`
 - exact basin harvest:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/_smoke/20260823-instruction-time-stage4-basin-a/summary.json`
+  `artifacts/_smoke/20260823-instruction-time-stage4-basin-a/summary.json`
 - dedicated finding rerun:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage4-instruction-time-three-basin-opening-fork/summary.json`
+  `artifacts/findings/semantic-stage4-instruction-time-three-basin-opening-fork/summary.json`
 - retail smoke for `instruction.time=-1`:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage4-instruction-time-three-basin-opening-fork/retail/report.json`
+  `artifacts/findings/semantic-stage4-instruction-time-three-basin-opening-fork/retail/report.json`
 
 Why this one matters:
 

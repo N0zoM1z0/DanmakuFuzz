@@ -474,6 +474,7 @@ def run_case(
     case_index: int,
     baseline_trace: Path | None = None,
     baseline_records: list[dict[str, object]] | None = None,
+    trace_alignment: str = "row",
 ) -> dict[str, object]:
     case_name = slugify_case_name(mutant, case_index)
     case_dir = campaign_dir / case_name
@@ -528,6 +529,7 @@ def run_case(
             score_trace_path_with_baseline(
                 trace_path,
                 baseline_records=resolved_baseline_records,
+                alignment=trace_alignment,
             )
         )
     elif not findings:
@@ -555,6 +557,7 @@ def run_case(
         "log": str(log_path.resolve()),
         "override_dir": str(override_dir.resolve()),
         "active_override_dir": str(active_override_dir.resolve()),
+        "trace_alignment": trace_alignment,
         "findings": [{"kind": finding.kind, "detail": finding.detail} for finding in findings],
         "interesting": bool(findings),
     }
@@ -586,6 +589,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--random-seed", type=int, default=0)
     parser.add_argument("--samples-per-site", type=int, default=4)
     parser.add_argument("--selection-mode", choices=("auto", "family", "site", "family-site"), default="auto")
+    parser.add_argument(
+        "--trace-alignment",
+        choices=("row", "game_frame", "stage_vm_pc", "timeline_time"),
+        default="row",
+        help="baseline/case alignment used by semantic differential scoring",
+    )
     parser.add_argument("--auto-shoot", dest="auto_shoot", action="store_true")
     parser.add_argument("--no-auto-shoot", dest="auto_shoot", action="store_false")
     parser.set_defaults(auto_shoot=True)
@@ -688,6 +697,7 @@ def main() -> int:
                 case_index=case_index,
                 baseline_trace=baseline_trace,
                 baseline_records=baseline_records,
+                trace_alignment=args.trace_alignment,
             )
             totals["cases"] += 1
             totals["interesting"] += int(bool(result["interesting"]))
@@ -717,6 +727,7 @@ def main() -> int:
         "random_seed": args.random_seed,
         "samples_per_site": args.samples_per_site,
         "selection_mode": resolved_selection_mode,
+        "trace_alignment": args.trace_alignment,
         "actions": str(profile["action_file"]),
         "max_ticks": profile["max_ticks"],
         "continue_after_hit": profile["continue_after_hit"],

@@ -49,6 +49,7 @@ STRONG_INPUT_FINDINGS = {
     "boss-health-drift",
     "input-repeat-desync",
     "replay-stable-trace-drift",
+    "replay-stable-state-drift",
 }
 
 

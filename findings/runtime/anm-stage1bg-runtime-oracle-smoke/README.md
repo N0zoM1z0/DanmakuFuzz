@@ -36,11 +36,11 @@ PYTHONPATH=src python3 findings/runtime/anm-stage1bg-runtime-oracle-smoke/reprod
 
 Payload selection is recorded in:
 
-- [payload_recipe.json](/home/yann/yann/touhou/DanmakuFuzz/findings/runtime/anm-stage1bg-runtime-oracle-smoke/payload_recipe.json)
+- [payload_recipe.json](findings/runtime/anm-stage1bg-runtime-oracle-smoke/payload_recipe.json)
 
 Current local evidence:
 
 - pilot artifact summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-anm-runtime-pilot-stg1bg/summary.json`
+  `artifacts/tmp-anm-runtime-pilot-stg1bg/summary.json`
 - standalone reproduction summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/runtime-anm-stage1bg-runtime-oracle-smoke/summary.json`
+  `artifacts/findings/runtime-anm-stage1bg-runtime-oracle-smoke/summary.json`

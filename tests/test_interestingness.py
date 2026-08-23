@@ -6,6 +6,7 @@ from danmakufuzz.interestingness.rules import (
     first_stall_event,
     score_trace,
     score_trace_differential,
+    score_trace_differential_records,
     score_trace_path_with_baseline,
     suppress_baseline_stall_findings,
 )
@@ -349,3 +350,60 @@ def test_score_trace_differential_flags_stage_and_boss_state_drift(tmp_path: Pat
     assert "boss-ui-drift" in kinds
     assert "spellcard-drift" in kinds
     assert "boss-health-drift" in kinds
+
+
+def test_score_trace_differential_can_align_by_semantic_keys() -> None:
+    baseline_rows = []
+    case_rows = []
+    for tick in range(1, 7):
+        baseline_rows.append(
+            {
+                "tick": tick,
+                "game_frame": tick,
+                "terminal_reason": None,
+                "bullets": [],
+                "lasers": [],
+                "enemies": [],
+                "score": 0,
+                "lives": 2,
+                "bombs": 3,
+                "stage_vm": {"loaded": True, "script_time": tick, "instruction_index": 10},
+                "ecl_timeline": {"time": tick, "next_time": tick + 10},
+            }
+        )
+        semantic_time = max(1, tick - 1)
+        case_rows.append(
+            {
+                "tick": tick,
+                "game_frame": semantic_time,
+                "terminal_reason": None,
+                "bullets": [],
+                "lasers": [],
+                "enemies": [],
+                "score": 0,
+                "lives": 2,
+                "bombs": 3,
+                "stage_vm": {"loaded": True, "script_time": semantic_time, "instruction_index": 10},
+                "ecl_timeline": {"time": semantic_time, "next_time": semantic_time + 10},
+            }
+        )
+
+    row_findings = score_trace_differential_records(
+        case_rows,
+        baseline_rows,
+        alignment="row",
+        sustained_window=2,
+    )
+    assert any(finding.kind == "stage-script-drift" for finding in row_findings)
+    assert any(finding.kind == "ecl-timeline-drift" for finding in row_findings)
+
+    for alignment in ("game_frame", "stage_vm_pc", "timeline_time"):
+        aligned_findings = score_trace_differential_records(
+            case_rows,
+            baseline_rows,
+            alignment=alignment,
+            sustained_window=2,
+        )
+        kinds = {finding.kind for finding in aligned_findings}
+        assert "stage-script-drift" not in kinds
+        assert "ecl-timeline-drift" not in kinds

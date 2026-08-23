@@ -58,11 +58,11 @@ Tracked compact payload patches:
 Current local evidence:
 
 - source exploration grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-core-grid-b/summary.json`
+  `artifacts/semantic-exploration-grid/20260822T-core-grid-b/summary.json`
 - cluster summary for the grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-clusters/20260822T-core-grid-b/summary.json`
+  `artifacts/semantic-clusters/20260822T-core-grid-b/summary.json`
 - August 22, 2026 retail smoke for the `bullet-count2=258` representative:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-bullet-count-cross-field-surge-collapse-basin/retail/report.json`
+  `artifacts/findings/semantic-stage6-bullet-count-cross-field-surge-collapse-basin/retail/report.json`
 
 Current interpretation:
 

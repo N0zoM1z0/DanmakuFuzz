@@ -61,13 +61,13 @@ Tracked compact payload patches:
 Current local evidence:
 
 - widened `bullet-count2` family sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-bullet-count2-explore-a/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-bullet-count2-explore-a/summary.json`
 - sampled source case:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-bullet-count2-explore-a/ecldata2/0009-bullet-count2-sampled-neg12208722-s02-i0009/result.json`
+  `artifacts/semantic-family-sweep/20260822T-bullet-count2-explore-a/ecldata2/0009-bullet-count2-sampled-neg12208722-s02-i0009/result.json`
 - exact-value basin probe:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-stage2-bullet-count2-basin-probe-a/probe-summary.json`
+  `artifacts/tmp-stage2-bullet-count2-basin-probe-a/probe-summary.json`
 - standardized site-basin mapper summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-site-basins/stage2-bullet-count2-s02-i0009-a/summary.json`
+  `artifacts/semantic-site-basins/stage2-bullet-count2-s02-i0009-a/summary.json`
 
 Why this one matters:
 

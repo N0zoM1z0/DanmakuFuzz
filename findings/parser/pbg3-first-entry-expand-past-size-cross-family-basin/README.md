@@ -42,9 +42,9 @@ multi-megabyte mutated archive blobs in Git.
 Current local evidence:
 
 - full campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/parser-pbg3/20260822T-full-a/campaign.json`
+  `artifacts/parser-pbg3/20260822T-full-a/campaign.json`
 - standalone reproduction summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/parser-pbg3-first-entry-expand-past-size-cross-family-basin/summary.json`
+  `artifacts/findings/parser-pbg3-first-entry-expand-past-size-cross-family-basin/summary.json`
 
 Why this one matters:
 

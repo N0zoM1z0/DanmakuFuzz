@@ -80,17 +80,17 @@ Tracked compact payload patches:
 Current local evidence:
 
 - source exploration grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-core-grid-d/summary.json`
+  `artifacts/semantic-exploration-grid/20260822T-core-grid-d/summary.json`
 - hotspot summary for the grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-hotspots/20260822T-core-grid-d/summary.json`
+  `artifacts/semantic-hotspots/20260822T-core-grid-d/summary.json`
 - 600-tick exact rerun for the four representatives:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exact-rerun/20260822T-stage6-shoot-interval-grid-d-a/report.json`
+  `artifacts/semantic-exact-rerun/20260822T-stage6-shoot-interval-grid-d-a/report.json`
 - explicit trace grouping against the shared Stage 6 baseline:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-trace-basins/20260822T-stage6-shoot-interval-grid-d-a/summary.json`
+  `artifacts/semantic-trace-basins/20260822T-stage6-shoot-interval-grid-d-a/summary.json`
 - 1800-tick follow-up on the `-60` / `46` pair:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exact-rerun/20260822T-stage6-shoot-interval-grid-d-1800-a/report.json`
+  `artifacts/semantic-exact-rerun/20260822T-stage6-shoot-interval-grid-d-1800-a/report.json`
 - August 22, 2026 retail smoke for the `shoot-interval=-60` representative:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-shoot-interval-cross-value-volley-split/retail/report.json`
+  `artifacts/findings/semantic-stage6-shoot-interval-cross-value-volley-split/retail/report.json`
 
 Why this one matters:
 

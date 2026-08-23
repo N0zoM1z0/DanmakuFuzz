@@ -37,13 +37,13 @@ PYTHONPATH=src python3 findings/semantic/stage3-jump-offset-zero-route-warp/repr
 Current local evidence:
 
 - source semantic case:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-jump-call-long-all/ecldata3/0001-jump-offset-zero-s04-i0019/result.json`
+  `artifacts/semantic-family-sweep/20260822T-jump-call-long-all/ecldata3/0001-jump-offset-zero-s04-i0019/result.json`
 - dedicated rerun result:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-rerun-stage3-jump-zero/0001-jump-offset-zero-s04-i0019/result.json`
+  `artifacts/tmp-rerun-stage3-jump-zero/0001-jump-offset-zero-s04-i0019/result.json`
 - family sweep summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-family-sweep/20260822T-jump-call-long-all/summary.json`
+  `artifacts/semantic-family-sweep/20260822T-jump-call-long-all/summary.json`
 - retail confirmation smoke:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage3-jump-offset-zero-route-warp-retail-smoke/retail/report.json`
+  `artifacts/findings/semantic-stage3-jump-offset-zero-route-warp-retail-smoke/retail/report.json`
 
 Why this one matters:
 

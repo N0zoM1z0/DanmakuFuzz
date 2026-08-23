@@ -21,7 +21,8 @@ Current first-pass parser-lane entrypoints:
   decompression;
 - `danmakufuzz.parser.pbg3_campaign` mutates one retail PBG3 archive seed and
   classifies each malformed case as `parse-error`, `extract-error`, or
-  `accepted`;
+  `accepted`. Accepted-equivalent payloads are format characterizations, not
+  interesting bug candidates;
 - `danmakufuzz.parser.replay` validates replay magic, deobfuscation, checksum,
   version, and stage offsets;
 - `danmakufuzz.parser.replay_campaign` mutates one replay seed and classifies

@@ -62,11 +62,11 @@ PYTHONPATH=src python3 findings/runtime/anm-stage1enm-runtime-sigsegv-basin/anal
 
 Payload selection is recorded in:
 
-- [payload_recipe.json](/home/yann/yann/touhou/DanmakuFuzz/findings/runtime/anm-stage1enm-runtime-sigsegv-basin/payload_recipe.json)
+- [payload_recipe.json](findings/runtime/anm-stage1enm-runtime-sigsegv-basin/payload_recipe.json)
 
 Current local evidence:
 
 - focused runtime campaign:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-anm-runtime-entry-campaign-default/stg1enm.anm/summary.jsonl`
+  `artifacts/tmp-anm-runtime-entry-campaign-default/stg1enm.anm/summary.jsonl`
 - accepted `enm` sweep:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-anm-runtime-enm-accepted/campaign.json`
+  `artifacts/tmp-anm-runtime-enm-accepted/campaign.json`

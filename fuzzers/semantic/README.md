@@ -66,6 +66,12 @@ also mixes context-aware, relative, scaled, bit-flip, and wide random values.
 Use `--random-seed` to roam the sampler and `--samples-per-site` to control the
 per-site fanout without changing the surrounding campaign logic.
 
+Semantic differential scoring defaults to row-order alignment for compatibility
+with existing artifacts. For promotion and root-cause review, rerun candidates
+with `--trace-alignment game_frame`, `--trace-alignment stage_vm_pc`, or
+`--trace-alignment timeline_time` to separate primary divergence from timing
+cascade.
+
 When exploration mode runs without an explicit limit, the runners now apply a
 small automatic mutant budget instead of materializing the full sampled set:
 
@@ -125,7 +131,7 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.exploration_grid \
 ```
 
 This runner keeps the campaign logic generic but lifts throughput in the way
-that matters for finding weird cases:
+that matters for finding high-signal cases:
 
 - each worker gets its own copied game directory under the artifact root;
 - each task is one `(seed_ecl, random_seed)` pair, so you can widen exploration
@@ -176,7 +182,7 @@ By default this lane:
 - reuses one headless baseline trace per stage instead of rerunning the same
   baseline for every entry;
 - focuses the initial mutant budget on four source-less ANM sites that already
-  map well onto runtime weirdness:
+  map well onto runtime resource drift:
   `first-sprite-offset-zero`, `first-script-id-ffff`,
   `first-script-offset-zero`, and `first-instr-argsize-zero`;
 - filters review toward `anm-script-drift`, `anm-non-finite`, and
@@ -508,7 +514,7 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.resource_coordination_campaign \
   --limit 6
 ```
 
-This lane is the current generic answer to “multi-resource weirdness”:
+This lane is the current generic answer to coordinated resource behavior:
 
 - `anm-triad` applies the same accepted ANM mutant across the stage
   `bg/enm/enm2` bundle at once;
@@ -536,7 +542,7 @@ artifact directory with:
 
 ```sh
 PYTHONPATH=src python3 -m danmakufuzz.semantic.resource_coordination_cluster \
-  --result artifacts/tmp-resource-coordination-smoke
+  --result artifacts/resource-coordination/.../campaign.json
 ```
 
 And minimize one coordinated bundle by dropping whole override files while
@@ -544,7 +550,7 @@ preserving the same coarse sink with:
 
 ```sh
 PYTHONPATH=src python3 -m danmakufuzz.semantic.resource_coordination_minimize \
-  --result artifacts/tmp-resource-coordination-smoke/0004-anm-triad-first-instr-opcode-255/result.json
+  --result artifacts/resource-coordination/.../case/result.json
 ```
 
 The current Stage 7 `anm-triad` / `anm-ecl` SIGSEGV basin is a good example of
@@ -595,7 +601,7 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.trace_basins \
   artifacts/semantic-family-sweep/20260822T-call-sub-portable-explore-a/ecldata3/summary.jsonl
 ```
 
-This is useful when multiple different mutations collapse into one weird late
+This is useful when multiple different mutations collapse into one late
 state and you want to prove they first diverge at the same tick / field instead
 of hand-reading traces one by one.
 
@@ -652,7 +658,8 @@ PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
   --from-minimized \
   --practice-stage 6 \
   --difficulty 3 \
-  --timeout-seconds 20
+  --timeout-seconds 20 \
+  --compare-clean-baseline
 ```
 
 Preview a prioritized replay queue without launching Wine with:
@@ -670,7 +677,7 @@ retail confirmation with:
 
 ```sh
 PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
-  --history artifacts/tmp-retail-oracle2-smoke.V69OIr \
+  --history artifacts/checks/previous-retail-batch/summary.json \
   --skip-known-source \
   --list-only \
   --result artifacts/semantic-minimized/bullet-sprite-16-s01-i0003/summary.json
@@ -680,7 +687,7 @@ Skip only when prior retail history predicts one stable normalized signature wit
 
 ```sh
 PYTHONPATH=src python3 -m danmakufuzz.retail.batch_confirm \
-  --history artifacts/tmp-retail-batch-priority-smoke.51UKuj/summary.json \
+  --history artifacts/checks/previous-retail-batch/summary.json \
   --from-minimized \
   --interesting-only \
   --max-per-finding 1 \
@@ -704,6 +711,10 @@ The retail runner now records a window census and classifies at least:
 - `crash-dialog`
 - `wine-crash-log`
 - `abnormal-exit`
+- `game-window-blank-static`
+- `retail-error-dialog`
+- `retail-baseline-equivalent` when a mutant is equivalent to the clean retail
+  control under `--compare-clean-baseline`
 
 Crash signatures are normalized before they become batch-level
 `retail_signature_key`s, so the same Wine crash still groups together when only

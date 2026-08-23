@@ -1,0 +1,44 @@
+{
+  "schema": "danmakufuzz-finding-v1",
+  "id": "semantic/replay-native-first-bookmark-cut-tail-input-error-basin",
+  "title": "Replay-native first-bookmark cut-tail input-error basin",
+  "kind": "semantic-replay-native-input-error",
+  "evidence_level": "HEADLESS_REPRODUCED",
+  "headless_runs": {
+    "pass": 3,
+    "total": 3,
+    "repeat_runs": 6,
+    "note": "Three public replay cases reproduce with deterministic run_a/run_b traces and returncode 1."
+  },
+  "retail_runs": {
+    "pass": 0,
+    "total": 0
+  },
+  "payload_sha256": [
+    "9409c3babc9f42ff34332ca6a324ba9f18527ebaf02bcf688b1e11556dbfb6d4",
+    "938e7e131ccfa702500147758dcad173b9af3debfba5b09af4ce5e8205512247",
+    "127834fd2a43b0dc7a31ef1c476820872c077c5482a933f8be734f4722ff2385"
+  ],
+  "model_revision": "th06-headless:4a9df00487c44985739da4af0e795f47460d0e00",
+  "retail_exe_sha256": null,
+  "expected_oracle": {
+    "classification": "process-exit",
+    "terminal_reason": "input-error",
+    "finding_kinds": [
+      "process-exit",
+      "replay-stable-state-drift",
+      "replay-stable-trace-drift"
+    ]
+  },
+  "triage_status": "headless-pending-retail",
+  "evidence": [
+    "findings/semantic/replay-native-first-bookmark-cut-tail-input-error-basin/cases.json",
+    "artifacts/findings/semantic-replay-native-first-bookmark-cut-tail-input-error-basin-20260823/summary.json",
+    "artifacts/checks/replay-desync-public-gensokyo804-stage6-coordinated-20260823/campaign.json"
+  ],
+  "notes": [
+    "The trigger cuts a public replay stage at the first non-initial bookmark and appends a sentinel.",
+    "Two cases cut at frame 1 and terminate at tick 3; the newer Stage 6 gensokyo-th6-804 case cuts at frame 56 and terminates at tick 58.",
+    "This is not yet a Wine retail replay confirmation."
+  ]
+}

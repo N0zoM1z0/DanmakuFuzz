@@ -62,7 +62,7 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_corpus_campaign \
 
 The representative cluster lives in:
 
-- `/home/yann/yann/touhou/DanmakuFuzz/artifacts/replay-coordinated-stage4-borrow-focus-v1/clusters.json`
+- `artifacts/replay-coordinated-stage4-borrow-focus-v1/clusters.json`
 
 Look for:
 

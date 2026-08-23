@@ -186,6 +186,11 @@ def _payload_size_for_case(data: dict[str, object], result_path: Path) -> int | 
         payload_path = Path(override_dir) / "data" / seed_name
         if payload_path.is_file():
             return payload_path.stat().st_size
+    entry_name = data.get("entry_name")
+    if isinstance(override_dir, str) and isinstance(entry_name, str):
+        payload_path = Path(override_dir) / "data" / entry_name
+        if payload_path.is_file():
+            return payload_path.stat().st_size
     payload_path = data.get("payload_path")
     if isinstance(payload_path, str):
         candidate = Path(payload_path)
@@ -198,6 +203,9 @@ def _source_kind_from_data(data: dict[str, object], result_path: Path) -> str:
     override_dir = data.get("override_dir")
     seed_name = data.get("seed_name")
     if isinstance(override_dir, str) and isinstance(seed_name, str):
+        return "semantic-result"
+    entry_name = data.get("entry_name")
+    if isinstance(override_dir, str) and isinstance(entry_name, str):
         return "semantic-result"
     final_payload = data.get("final_payload")
     if isinstance(final_payload, str):
@@ -247,6 +255,18 @@ def _queue_source_keys(case: QueueCase) -> tuple[str, ...]:
     return tuple(unique)
 
 
+def _looks_like_supported_summary(path: Path) -> bool:
+    try:
+        data = _load_report(path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    try:
+        _source_kind_from_data(data, path)
+    except ValueError:
+        return False
+    return True
+
+
 def _discover_results(result_args: list[Path], from_minimized: bool) -> list[Path]:
     discovered: list[Path] = []
     for item in result_args:
@@ -255,8 +275,12 @@ def _discover_results(result_args: list[Path], from_minimized: bool) -> list[Pat
             discovered.append(resolved)
             continue
         if resolved.is_dir():
-            discovered.extend(sorted(resolved.rglob("summary.json")))
             discovered.extend(sorted(resolved.rglob("result.json")))
+            discovered.extend(
+                path
+                for path in sorted(resolved.rglob("summary.json"))
+                if _looks_like_supported_summary(path)
+            )
             continue
         raise FileNotFoundError(f"retail batch input does not exist: {resolved}")
     if from_minimized:
@@ -463,6 +487,55 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--practice-stage", type=int, choices=range(1, 7))
     parser.add_argument("--difficulty", type=int, choices=range(4))
     parser.add_argument("--timeout-seconds", type=float)
+    parser.add_argument(
+        "--startup-seconds",
+        type=float,
+        help="forward initial wall-clock wait after Wine launch",
+    )
+    parser.add_argument(
+        "--stage-entry-wait-seconds",
+        type=float,
+        help="forward maximum wall-clock wait for the requested stage frame",
+    )
+    parser.add_argument(
+        "--stage-entry-min-frame",
+        type=int,
+        help="forward the TH06 game frame used for entered-stage screenshots",
+    )
+    parser.add_argument(
+        "--progress-probe-seconds",
+        type=float,
+        help="forward maximum wall-clock wait for the progress probe frame",
+    )
+    parser.add_argument(
+        "--progress-probe-frames",
+        type=int,
+        help="forward the additional TH06 game frames used for progress probes",
+    )
+    parser.add_argument(
+        "--startup-normalization",
+        choices=("auto", "gdb", "off"),
+        help="forward TH06 Wine startup normalization mode",
+    )
+    parser.add_argument(
+        "--startup-normalization-delay-seconds",
+        type=float,
+        help="forward startup-normalization attach delay",
+    )
+    parser.add_argument(
+        "--xvfb-screen-size",
+        help="forwarded Xvfb screen geometry as WIDTHxHEIGHTxDEPTH",
+    )
+    parser.add_argument(
+        "--color-mode-16bit",
+        choices=("0", "1", "255", "preserve"),
+        help="forwarded TH06 cfg color-mode byte override",
+    )
+    parser.add_argument(
+        "--compare-clean-baseline",
+        action="store_true",
+        help="forward clean baseline screenshot comparison to each retail replay",
+    )
     parser.add_argument("--limit", type=int)
     parser.add_argument(
         "--priority-order",
@@ -765,6 +838,16 @@ def _queue_options_dict(args: argparse.Namespace) -> dict[str, object]:
         "finding_kind": args.finding_kind,
         "max_per_finding": args.max_per_finding,
         "limit": args.limit,
+        "startup_seconds": args.startup_seconds,
+        "stage_entry_wait_seconds": args.stage_entry_wait_seconds,
+        "stage_entry_min_frame": args.stage_entry_min_frame,
+        "progress_probe_seconds": args.progress_probe_seconds,
+        "progress_probe_frames": args.progress_probe_frames,
+        "startup_normalization": args.startup_normalization,
+        "startup_normalization_delay_seconds": args.startup_normalization_delay_seconds,
+        "xvfb_screen_size": args.xvfb_screen_size,
+        "color_mode_16bit": args.color_mode_16bit,
+        "compare_clean_baseline": args.compare_clean_baseline,
         "skip_known_source": args.skip_known_source,
         "skip_known_finding": args.skip_known_finding,
         "skip_known_signature": args.skip_known_signature,
@@ -836,6 +919,41 @@ def main() -> int:
         if args.timeout_seconds <= 0:
             raise ValueError("--timeout-seconds must be positive")
         base_command.extend(["--timeout-seconds", str(args.timeout_seconds)])
+    if args.startup_seconds is not None:
+        if args.startup_seconds <= 0:
+            raise ValueError("--startup-seconds must be positive")
+        base_command.extend(["--startup-seconds", str(args.startup_seconds)])
+    if args.stage_entry_wait_seconds is not None:
+        if args.stage_entry_wait_seconds <= 0:
+            raise ValueError("--stage-entry-wait-seconds must be positive")
+        base_command.extend(["--stage-entry-wait-seconds", str(args.stage_entry_wait_seconds)])
+    if args.stage_entry_min_frame is not None:
+        if args.stage_entry_min_frame <= 0:
+            raise ValueError("--stage-entry-min-frame must be positive")
+        base_command.extend(["--stage-entry-min-frame", str(args.stage_entry_min_frame)])
+    if args.progress_probe_seconds is not None:
+        if args.progress_probe_seconds < 0:
+            raise ValueError("--progress-probe-seconds must be non-negative")
+        base_command.extend(["--progress-probe-seconds", str(args.progress_probe_seconds)])
+    if args.progress_probe_frames is not None:
+        if args.progress_probe_frames <= 0:
+            raise ValueError("--progress-probe-frames must be positive")
+        base_command.extend(["--progress-probe-frames", str(args.progress_probe_frames)])
+    if args.startup_normalization is not None:
+        base_command.extend(["--startup-normalization", args.startup_normalization])
+    if args.startup_normalization_delay_seconds is not None:
+        if args.startup_normalization_delay_seconds <= 0:
+            raise ValueError("--startup-normalization-delay-seconds must be positive")
+        base_command.extend([
+            "--startup-normalization-delay-seconds",
+            str(args.startup_normalization_delay_seconds),
+        ])
+    if args.xvfb_screen_size is not None:
+        base_command.extend(["--xvfb-screen-size", args.xvfb_screen_size])
+    if args.color_mode_16bit is not None:
+        base_command.extend(["--color-mode-16bit", args.color_mode_16bit])
+    if args.compare_clean_baseline:
+        base_command.append("--compare-clean-baseline")
     if args.prepare_only:
         base_command.append("--prepare-only")
     if args.dry_run:

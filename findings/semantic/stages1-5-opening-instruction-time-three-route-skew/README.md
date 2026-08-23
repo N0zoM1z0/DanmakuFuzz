@@ -64,11 +64,11 @@ Tracked compact payload patches:
 Current local evidence:
 
 - source exploration grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-mutator-broaden-a/summary.json`
+  `artifacts/semantic-exploration-grid/20260822T-mutator-broaden-a/summary.json`
 - cluster summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-clusters/20260822T222333Z/summary.json`
+  `artifacts/semantic-clusters/20260822T222333Z/summary.json`
 - local reproduce summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stages1-5-opening-instruction-time-three-route-skew/summary.json`
+  `artifacts/findings/semantic-stages1-5-opening-instruction-time-three-route-skew/summary.json`
 
 Current interpretation:
 

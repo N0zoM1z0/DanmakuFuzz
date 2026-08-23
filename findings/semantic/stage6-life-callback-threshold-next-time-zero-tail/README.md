@@ -43,15 +43,15 @@ Tracked compact payload reconstruction patch:
 Current local evidence:
 
 - source boss exploration grid:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-boss-grid-a/summary.json`
+  `artifacts/semantic-exploration-grid/20260822T-boss-grid-a/summary.json`
 - original source case that first exposed this site:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-exploration-grid/20260822T-boss-grid-a/tasks/0009-ecldata6-rs0/0007-life-callback-threshold-sampled-8389708-s09-i0038/result.json`
+  `artifacts/semantic-exploration-grid/20260822T-boss-grid-a/tasks/0009-ecldata6-rs0/0007-life-callback-threshold-sampled-8389708-s09-i0038/result.json`
 - site-level exact-value sweep before the override-path hygiene fix:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/semantic-site-basins/20260822T-stage6-lifecb-a/summary.json`
+  `artifacts/semantic-site-basins/20260822T-stage6-lifecb-a/summary.json`
 - dedicated finding rerun with the fixed active-override staging path:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-life-callback-threshold-next-time-zero-tail/summary.json`
+  `artifacts/findings/semantic-stage6-life-callback-threshold-next-time-zero-tail/summary.json`
 - August 22, 2026 retail smoke:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/findings/semantic-stage6-life-callback-threshold-next-time-zero-tail/retail/report.json`
+  `artifacts/findings/semantic-stage6-life-callback-threshold-next-time-zero-tail/retail/report.json`
 
 Why this one matters:
 

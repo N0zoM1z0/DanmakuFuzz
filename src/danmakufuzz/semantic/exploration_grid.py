@@ -14,7 +14,7 @@ from typing import Any
 
 from ..headless.baseline import DEFAULT_ACTION_FILE, DEFAULT_GAME_DIR, default_headless_binary, run_baseline
 from ..headless.prepare_worker_game_dir import prepare_worker_game_dir
-from ..interestingness.rules import load_trace_records
+from ..interestingness.rules import ALIGNMENT_MODES, load_trace_records
 from ..repo import ARTIFACTS_DIR, REFERENCE_DIR, ensure_directory
 from .ecl_campaign import (
     DEFAULT_EXPLORATION_GRID_LIMIT,
@@ -252,6 +252,7 @@ def _run_task(
     mutation_mode: str,
     samples_per_site: int,
     limit_per_task: int | None,
+    trace_alignment: str,
     auto_shoot: bool,
     print_lock: threading.Lock,
 ) -> dict[str, object]:
@@ -325,6 +326,7 @@ def _run_task(
                 case_index=case_index,
                 baseline_trace=baseline.trace,
                 baseline_records=baseline.records,
+                trace_alignment=trace_alignment,
             )
             task_totals["cases_run"] += 1
             task_totals["interesting_cases"] += int(bool(result["interesting"]))
@@ -361,6 +363,7 @@ def _run_task(
         "mutation_mode": mutation_mode,
         "samples_per_site": samples_per_site,
         "selection_mode": resolved_selection_mode,
+        "trace_alignment": trace_alignment,
         "actions": str(action_file),
         "headless_seed": headless_seed,
         "difficulty": difficulty,
@@ -412,6 +415,7 @@ def _task_error_summary(
     samples_per_site: int,
     limit_per_task: int | None,
     timeout_seconds: float,
+    trace_alignment: str,
     error: Exception,
 ) -> dict[str, object]:
     task_dir = artifact_dir / "tasks" / task.slug
@@ -431,6 +435,7 @@ def _task_error_summary(
         "mutation_mode": mutation_mode,
         "samples_per_site": samples_per_site,
         "selection_mode": resolved_selection_mode,
+        "trace_alignment": trace_alignment,
         "limit_per_task": limit_per_task,
         "timeout_seconds": timeout_seconds,
         "error": {
@@ -471,6 +476,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--random-seed-count", type=int, default=1)
     parser.add_argument("--samples-per-site", type=int, default=4)
     parser.add_argument("--selection-mode", choices=("auto", "family", "site", "family-site"), default="auto")
+    parser.add_argument(
+        "--trace-alignment",
+        choices=ALIGNMENT_MODES,
+        default="row",
+        help="align differential trace oracle records by row, game frame, stage VM PC, or timeline time",
+    )
     parser.add_argument("--auto-shoot", dest="auto_shoot", action="store_true")
     parser.add_argument("--no-auto-shoot", dest="auto_shoot", action="store_false")
     parser.set_defaults(auto_shoot=True)
@@ -558,6 +569,7 @@ def main() -> int:
                         mutation_mode=args.mutation_mode,
                         samples_per_site=args.samples_per_site,
                         limit_per_task=limit_policy["effective_limit"],
+                        trace_alignment=args.trace_alignment,
                         auto_shoot=args.auto_shoot,
                         print_lock=print_lock,
                     )
@@ -573,6 +585,7 @@ def main() -> int:
                         samples_per_site=args.samples_per_site,
                         limit_per_task=limit_policy["effective_limit"],
                         timeout_seconds=float(profile["timeout_seconds"]),
+                        trace_alignment=args.trace_alignment,
                         error=error,
                     )
                     _emit_json(
@@ -643,6 +656,7 @@ def main() -> int:
         "random_seeds": random_seeds,
         "samples_per_site": args.samples_per_site,
         "selection_mode": resolved_selection_mode,
+        "trace_alignment": args.trace_alignment,
         "worker_count": worker_count,
         "headless_seed": args.seed,
         "difficulty": args.difficulty,

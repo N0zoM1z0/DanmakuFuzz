@@ -409,5 +409,4 @@ def test_generate_exploration_mutants_generic_arg32_can_reach_nonleading_slots()
         for metadata in [mutant.metadata]
         if isinstance(metadata, dict) and isinstance(metadata.get("arg_offset"), int)
     }
-    assert len(offsets) == 2
-    assert any(offset > 4 for offset in offsets)
+    assert offsets == {0, 4, 8, 12}

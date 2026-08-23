@@ -1,0 +1,50 @@
+{
+  "schema": "danmakufuzz-finding-v1",
+  "id": "runtime/anm-stage6-metamorphic-runtime-equivalence",
+  "title": "Stage 6 ANM metamorphic runtime equivalence",
+  "kind": "runtime-metamorphic-equivalence",
+  "evidence_level": "HEADLESS_REPRODUCED",
+  "headless_runs": {
+    "pass": 12,
+    "total": 12,
+    "note": "All Stage 6 ANM metamorphic cases produced the same 1200-line headless trace hash as the clean baseline."
+  },
+  "retail_runs": {
+    "pass": 0,
+    "total": 0
+  },
+  "payload_sha256": [
+    "1d3a550e1641b64472e868b70ba34335b95c875041114f239f2167f9fb625f15",
+    "1db31e56f3e878dda4e05111b115d01facc198471344f3a9a4d358b25e87334a",
+    "2f903c7969ac6589fd68f5d69e58b73aa576eac6583d741aaf20573e25178aec",
+    "3cf1edd323fb5eb1a52ceb12a81d24e46acbade232a8aea85cb1a58e4c4a9ee5",
+    "707267cd42b75d19883d11d0d203487d1a3182a91cd44e5af73aa9bedb411a08",
+    "8f3a432c33ed63c3cda45d43bd32a060b66a4e0e28fe54d305aff9704293c06a",
+    "9623425bfe1adbf0ecc74172222cc10dbd5dddef9d7832a9f4f388f2566f69bd",
+    "b150e98c655c700685651688fca39eeed5d273fc0ce00284edc87ba082b964bc",
+    "ddbf80672d6b720bde92c8bb5914f433735dd6dc6f10b32fc90c5cfd2a48932b",
+    "e3e86116066703992a016ed2f23d86dc4e3461367bf6393335c17d8700b1430d",
+    "e5ace2947766fdedfd05ed3f2ef716b8a53b60eba3995b069e2bace7edd57a0b",
+    "ed3ab9a45eafddfd0d22fa8ff7e5f9dac3c9840c503ddf38ba969b40cf2962a1"
+  ],
+  "model_revision": "th06-headless:4a9df00487c44985739da4af0e795f47460d0e00",
+  "retail_exe_sha256": null,
+  "expected_oracle": {
+    "classification": "equivalent",
+    "baseline_trace_sha256": "76807eba84ec4d20745dfe91fd5dd02d44f33ee4a253612f2d44df44dc440c19",
+    "metamorphic_relations": [
+      "anm-ignored-header-field-equivalence",
+      "anm-script-table-order-equivalence"
+    ]
+  },
+  "triage_status": "format-observation",
+  "evidence": [
+    "artifacts/checks/anm-metamorphic-runtime-stage6-20260823/campaign.json",
+    "artifacts/checks/anm-metamorphic-runtime-stage6-20260823/summary.jsonl"
+  ],
+  "notes": [
+    "The Stage 6 run covered stg6bg.anm, stg6enm.anm, and stg6enm2.anm.",
+    "Header unk1/unk2 mutations and script-table row reorderings were runtime-equivalent in headless even when parser summaries reported script table field changes.",
+    "This is useful as a metamorphic invariant and as a future negative control for ANM retail confirmation, not as a bug finding."
+  ]
+}

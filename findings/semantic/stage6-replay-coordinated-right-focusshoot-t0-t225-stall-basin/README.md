@@ -93,8 +93,8 @@ Tracked payloads:
 Current local evidence:
 
 - campaign summary:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-replay-desync-long-smoke/campaign.json`
+  `artifacts/tmp-replay-desync-long-smoke/campaign.json`
 - per-case result:
-  `/home/yann/yann/touhou/DanmakuFuzz/artifacts/tmp-replay-desync-long-smoke/0007-coordinated-right-focusshoot-t0-t225-w8/result.json`
+  `artifacts/tmp-replay-desync-long-smoke/0007-coordinated-right-focusshoot-t0-t225-w8/result.json`
 - nearby single-site sibling:
-  `/home/yann/yann/touhou/DanmakuFuzz/findings/semantic/stage6-input-fast-burst-t225-stall-basin/README.md`
+  `findings/semantic/stage6-input-fast-burst-t225-stall-basin/README.md`
