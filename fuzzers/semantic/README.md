@@ -133,6 +133,46 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.boss_sweep \
 This sweep skips `ecldata7.ecl` by default because current headless Practice
 startup only supports stages `1..6`.
 
+## ANM runtime entry lane
+
+Run the generic ANM runtime-entry campaign with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.parser.anm_runtime_campaign
+```
+
+By default this lane:
+
+- auto-selects archive entries matching `stgXbg.anm` and `stgXenm.anm`;
+- skips unsupported Practice stages outside `1..6`;
+- reuses one headless baseline trace per stage instead of rerunning the same
+  baseline for every entry;
+- focuses the initial mutant budget on four source-less ANM sites that already
+  map well onto runtime weirdness:
+  `first-sprite-offset-zero`, `first-script-id-ffff`,
+  `first-script-offset-zero`, and `first-instr-argsize-zero`;
+- filters review toward `anm-script-drift`, `anm-non-finite`, and
+  `anm-set-active-sprite-failure`.
+
+Useful knobs:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.parser.anm_runtime_campaign \
+  --entry stg1bg.anm \
+  --entry stg1enm.anm \
+  --mutant-profile accepted \
+  --limit-per-entry 8
+```
+
+This lane keeps the full per-case payload and `result.json` under each entry
+artifact directory, but the top-level review files stay compact:
+
+- `summary.jsonl` records one concise line per executed case;
+- `target-hits.jsonl` keeps only cases that hit the chosen runtime target
+  kinds;
+- `campaign.json` records baseline reuse, per-entry hit counts, and skipped
+  entries.
+
 ## Input lane
 
 Run the generic headless input/action lane with:
