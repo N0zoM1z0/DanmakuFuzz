@@ -172,6 +172,43 @@ BOSS_HEALTH_DRIFT_FIELDS = (
     ("health1", "boss_ui.health1"),
     ("health2", "boss_ui.health2"),
 )
+ANM_LOAD_DRIFT_FIELDS = (
+    ("load_anm_calls", "anm_metrics.load_anm_calls"),
+    ("load_anm_failures", "anm_metrics.load_anm_failures"),
+    ("texture_load_failures", "anm_metrics.texture_load_failures"),
+    ("alpha_texture_load_failures", "anm_metrics.alpha_texture_load_failures"),
+    ("texture_size_mismatches", "anm_metrics.texture_size_mismatches"),
+    ("sprites_loaded", "anm_metrics.sprites_loaded"),
+    ("suspicious_sprites_loaded", "anm_metrics.suspicious_sprites_loaded"),
+    ("scripts_loaded", "anm_metrics.scripts_loaded"),
+    ("set_active_sprite_failures", "anm_metrics.set_active_sprite_failures"),
+)
+ANM_SCRIPT_DRIFT_FIELDS = (
+    ("execute_script_calls", "anm_metrics.execute_script_calls"),
+    ("script_instruction_steps", "anm_metrics.script_instruction_steps"),
+    ("vm_non_finite", "anm_metrics.vm_non_finite"),
+)
+ANM_RENDER_DRIFT_FIELDS = (
+    ("draw_calls", "anm_metrics.draw_calls"),
+    ("draw_skipped_invisible", "anm_metrics.draw_skipped_invisible"),
+    ("draw_skipped_flag1", "anm_metrics.draw_skipped_flag1"),
+    ("draw_skipped_color_zero", "anm_metrics.draw_skipped_color_zero"),
+    ("backend_draw_calls", "anm_metrics.backend_draw_calls"),
+    ("flushes", "anm_metrics.flushes"),
+    ("sprites_queued", "anm_metrics.sprites_queued"),
+    ("suspicious_sprite_draws", "anm_metrics.suspicious_sprite_draws"),
+)
+
+ANM_STANDALONE_FINDINGS = (
+    ("load_anm_failures", "anm-load-failure"),
+    ("texture_load_failures", "anm-texture-load-failure"),
+    ("alpha_texture_load_failures", "anm-alpha-texture-load-failure"),
+    ("texture_size_mismatches", "anm-texture-size-mismatch"),
+    ("set_active_sprite_failures", "anm-set-active-sprite-failure"),
+    ("vm_non_finite", "anm-non-finite"),
+    ("suspicious_sprites_loaded", "anm-suspicious-sprite"),
+    ("suspicious_sprite_draws", "anm-suspicious-draw"),
+)
 
 
 def _walk_numbers(value: Any, findings: list[Finding], path: str = "$") -> None:
@@ -207,6 +244,34 @@ def _report_compact_entity_non_finite(record: dict[str, Any], findings: list[Fin
         value = metrics.get(field_name)
         if isinstance(value, int) and not isinstance(value, bool) and value > 0:
             findings.append(Finding("non-finite", f"$.entity_metrics.{field_name}={value}"))
+
+
+def _report_anm_runtime_findings(
+    record: dict[str, Any],
+    findings: list[Finding],
+    *,
+    baseline_record: dict[str, Any] | None = None,
+    reported_kinds: set[str],
+) -> None:
+    metrics = record.get("anm_metrics")
+    if not isinstance(metrics, dict):
+        return
+    baseline_metrics = baseline_record.get("anm_metrics") if isinstance(baseline_record, dict) else None
+    for field_name, finding_kind in ANM_STANDALONE_FINDINGS:
+        value = metrics.get(field_name)
+        baseline_value = baseline_metrics.get(field_name) if isinstance(baseline_metrics, dict) else None
+        if (
+            isinstance(value, int)
+            and not isinstance(value, bool)
+            and value > (
+                baseline_value
+                if isinstance(baseline_value, int) and not isinstance(baseline_value, bool)
+                else 0
+            )
+            and finding_kind not in reported_kinds
+        ):
+            findings.append(Finding(finding_kind, f"$.anm_metrics.{field_name}={value}"))
+            reported_kinds.add(finding_kind)
 
 
 def _mapping_drift_detail(
@@ -317,6 +382,7 @@ def score_trace_records(
     item_limit: int = 256,
 ) -> list[Finding]:
     findings: list[Finding] = []
+    reported_anm_kinds: set[str] = set()
     stall: StallEvent | None = None
     last_frame: int | None = None
     repeated_frames = 0
@@ -340,6 +406,7 @@ def score_trace_records(
                 )
         _walk_numbers(record, findings)
         _report_compact_entity_non_finite(record, findings)
+        _report_anm_runtime_findings(record, findings, reported_kinds=reported_anm_kinds)
         timeline_next_finding = None
         if not negative_timeline_next_reported:
             timeline_next_finding = _timeline_next_time_finding(record, line_number=line_number)
@@ -440,6 +507,7 @@ def score_trace_path_with_baseline(
 ) -> list[Finding]:
     standalone_findings: list[Finding] = []
     differential_findings: list[Finding] = []
+    reported_anm_kinds: set[str] = set()
     case_stall: StallEvent | None = None
     last_frame: int | None = None
     repeated_frames = 0
@@ -464,6 +532,12 @@ def score_trace_path_with_baseline(
     boss_ui_streak = 0
     spellcard_streak = 0
     boss_health_streak = 0
+    anm_load_streak = 0
+    anm_script_streak = 0
+    anm_render_streak = 0
+    anm_load_streak = 0
+    anm_script_streak = 0
+    anm_render_streak = 0
     saw_bullet_drift = False
     saw_enemy_drift = False
     saw_laser_drift = False
@@ -476,6 +550,9 @@ def score_trace_path_with_baseline(
     saw_boss_ui_drift = False
     saw_spellcard_drift = False
     saw_boss_health_drift = False
+    saw_anm_load_drift = False
+    saw_anm_script_drift = False
+    saw_anm_render_drift = False
     saw_life_drift = False
     saw_bomb_drift = False
 
@@ -504,6 +581,17 @@ def score_trace_path_with_baseline(
 
         _walk_numbers(case_record, standalone_findings)
         _report_compact_entity_non_finite(case_record, standalone_findings)
+        baseline_record_for_standalone = (
+            baseline_records[line_number - 1]
+            if baseline_records is not None and line_number <= baseline_length
+            else None
+        )
+        _report_anm_runtime_findings(
+            case_record,
+            standalone_findings,
+            baseline_record=baseline_record_for_standalone,
+            reported_kinds=reported_anm_kinds,
+        )
         if not negative_timeline_next_reported:
             timeline_next_finding = _timeline_next_time_finding(case_record, line_number=line_number)
             if timeline_next_finding is not None:
@@ -673,6 +761,38 @@ def score_trace_path_with_baseline(
             differential_findings.append(Finding("boss-health-drift", f"tick {tick_label} {boss_health_detail}"))
             saw_boss_health_drift = True
 
+        baseline_anm_metrics = baseline_record.get("anm_metrics")
+        case_anm_metrics = case_record.get("anm_metrics")
+        anm_load_detail = _mapping_drift_detail(
+            baseline_anm_metrics,
+            case_anm_metrics,
+            ANM_LOAD_DRIFT_FIELDS,
+        )
+        anm_load_streak = anm_load_streak + 1 if anm_load_detail is not None else 0
+        if anm_load_streak >= sustained_window and not saw_anm_load_drift:
+            differential_findings.append(Finding("anm-load-drift", f"tick {tick_label} {anm_load_detail}"))
+            saw_anm_load_drift = True
+
+        anm_script_detail = _mapping_drift_detail(
+            baseline_anm_metrics,
+            case_anm_metrics,
+            ANM_SCRIPT_DRIFT_FIELDS,
+        )
+        anm_script_streak = anm_script_streak + 1 if anm_script_detail is not None else 0
+        if anm_script_streak >= sustained_window and not saw_anm_script_drift:
+            differential_findings.append(Finding("anm-script-drift", f"tick {tick_label} {anm_script_detail}"))
+            saw_anm_script_drift = True
+
+        anm_render_detail = _mapping_drift_detail(
+            baseline_anm_metrics,
+            case_anm_metrics,
+            ANM_RENDER_DRIFT_FIELDS,
+        )
+        anm_render_streak = anm_render_streak + 1 if anm_render_detail is not None else 0
+        if anm_render_streak >= sustained_window and not saw_anm_render_drift:
+            differential_findings.append(Finding("anm-render-drift", f"tick {tick_label} {anm_render_detail}"))
+            saw_anm_render_drift = True
+
         baseline_lives = baseline_record.get("lives")
         case_lives = case_record.get("lives")
         if isinstance(baseline_lives, int) and isinstance(case_lives, int) and baseline_lives != case_lives and not saw_life_drift:
@@ -809,6 +929,9 @@ def score_trace_differential_records(
     saw_boss_ui_drift = False
     saw_spellcard_drift = False
     saw_boss_health_drift = False
+    saw_anm_load_drift = False
+    saw_anm_script_drift = False
+    saw_anm_render_drift = False
     saw_life_drift = False
     saw_bomb_drift = False
 
@@ -945,6 +1068,38 @@ def score_trace_differential_records(
         if boss_health_streak >= sustained_window and not saw_boss_health_drift:
             findings.append(Finding("boss-health-drift", f"tick {tick_label} {boss_health_detail}"))
             saw_boss_health_drift = True
+
+        baseline_anm_metrics = baseline_record.get("anm_metrics")
+        case_anm_metrics = case_record.get("anm_metrics")
+        anm_load_detail = _mapping_drift_detail(
+            baseline_anm_metrics,
+            case_anm_metrics,
+            ANM_LOAD_DRIFT_FIELDS,
+        )
+        anm_load_streak = anm_load_streak + 1 if anm_load_detail is not None else 0
+        if anm_load_streak >= sustained_window and not saw_anm_load_drift:
+            findings.append(Finding("anm-load-drift", f"tick {tick_label} {anm_load_detail}"))
+            saw_anm_load_drift = True
+
+        anm_script_detail = _mapping_drift_detail(
+            baseline_anm_metrics,
+            case_anm_metrics,
+            ANM_SCRIPT_DRIFT_FIELDS,
+        )
+        anm_script_streak = anm_script_streak + 1 if anm_script_detail is not None else 0
+        if anm_script_streak >= sustained_window and not saw_anm_script_drift:
+            findings.append(Finding("anm-script-drift", f"tick {tick_label} {anm_script_detail}"))
+            saw_anm_script_drift = True
+
+        anm_render_detail = _mapping_drift_detail(
+            baseline_anm_metrics,
+            case_anm_metrics,
+            ANM_RENDER_DRIFT_FIELDS,
+        )
+        anm_render_streak = anm_render_streak + 1 if anm_render_detail is not None else 0
+        if anm_render_streak >= sustained_window and not saw_anm_render_drift:
+            findings.append(Finding("anm-render-drift", f"tick {tick_label} {anm_render_detail}"))
+            saw_anm_render_drift = True
 
         baseline_lives = baseline_record.get("lives")
         case_lives = case_record.get("lives")

@@ -1,0 +1,14 @@
+{
+  "schema": "danmakufuzz-runtime-oracle-smoke-v1",
+  "archive": "/home/yann/yann/touhou/DanmakuFuzz/reference/corpus/pbg3/original/紅魔郷ST.DAT",
+  "entry": "stg1bg.anm",
+  "mutants": [
+    "name-offset-zero",
+    "width-neg1",
+    "height-neg1",
+    "first-sprite-offset-zero",
+    "first-script-id-ffff",
+    "first-script-offset-zero",
+    "first-instr-argsize-zero"
+  ]
+}
