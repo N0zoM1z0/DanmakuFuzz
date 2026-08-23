@@ -21,8 +21,8 @@ from ..parser.replay import (
     encode_stage_replay_data,
     input_masks_to_replay_bookmarks,
     parse_stage_replay_data,
+    replay_populated_stages,
     replay_stage_action_masks,
-    replace_replay_stage_payloads,
 )
 from ..repo import ARTIFACTS_DIR, ensure_directory
 from .input_campaign import _filter_findings, _repeat_desync_findings, _run_once
@@ -39,10 +39,14 @@ def _default_artifact_dir() -> Path:
 
 
 def _infer_replay_stage(seed_payload: bytes) -> int:
-    for stage_index, stage_data in enumerate(parse_stage_replay_data(seed_payload), start=1):
-        if stage_data is not None:
-            return stage_index
-    raise ValueError("replay payload has no stage replay data")
+    populated = replay_populated_stages(seed_payload)
+    if not populated:
+        raise ValueError("replay payload has no stage replay data")
+    if len(populated) > 1:
+        raise ValueError(
+            "replay payload has multiple populated stages; pass --stage explicitly or use replay_corpus_campaign"
+        )
+    return int(populated[0])
 
 
 def _synthesize_replay_seed(
@@ -244,6 +248,143 @@ def _run_mutant(
     return result
 
 
+def run_replay_desync_campaign(
+    *,
+    artifact_dir: Path,
+    input_path: Path | None,
+    actions_path: Path,
+    game_dir: Path,
+    headless_bin: Path,
+    stage: int | None,
+    seed: int,
+    difficulty: int | None,
+    character: int | None,
+    shot_type: int | None,
+    max_ticks: int | None,
+    timeout_seconds: float,
+    auto_shoot: bool,
+    continue_after_hit: bool,
+    trace_compact_counts: bool,
+    random_seed: int,
+    samples_per_site: int,
+    limit: int | None,
+    name_filters: list[str] | None = None,
+    emit_stdout: bool = True,
+) -> dict[str, object]:
+    ensure_directory(artifact_dir)
+
+    seed_payload, seed_runtime, baseline_input_masks = _materialize_seed_replay(
+        input_path=input_path,
+        actions_path=actions_path,
+        stage=stage,
+        difficulty=difficulty,
+        character=character,
+        shot_type=shot_type,
+        auto_shoot=auto_shoot,
+    )
+    resolved_stage = int(seed_runtime["stage"])
+    resolved_difficulty = int(seed_runtime["difficulty"])
+    resolved_character = int(seed_runtime["character"])
+    resolved_shot_type = int(seed_runtime["shot_type"])
+    resolved_max_ticks = max_ticks if max_ticks is not None else len(baseline_input_masks)
+
+    seed_replay_path = artifact_dir / "seed.rpy"
+    seed_replay_path.write_bytes(seed_payload)
+    baseline_actions_path = artifact_dir / "baseline-actions.txt"
+    baseline_actions_path.write_text(
+        serialize_mask_actions(baseline_input_masks[:resolved_max_ticks]),
+        encoding="utf-8",
+    )
+
+    baseline_dir = artifact_dir / "_baseline"
+    baseline_metadata = run_baseline(
+        binary=headless_bin,
+        game_dir=game_dir,
+        resource_override_dir=None,
+        stage=resolved_stage,
+        seed=seed,
+        action_file=baseline_actions_path,
+        artifact_dir=baseline_dir,
+        difficulty=resolved_difficulty,
+        character=resolved_character,
+        shot_type=resolved_shot_type,
+        max_ticks=resolved_max_ticks,
+        auto_shoot=False,
+        continue_after_hit=continue_after_hit,
+        trace_compact_counts=trace_compact_counts,
+        log_path=baseline_dir / "run.log",
+        dry_run=False,
+    )
+    baseline_trace = Path(str(baseline_metadata["trace"]))
+    baseline_records = load_trace_records(baseline_trace) if baseline_trace.is_file() else None
+
+    mutants = generate_replay_input_mutants(
+        seed_payload,
+        stage=resolved_stage,
+        max_frames=resolved_max_ticks,
+        random_seed=random_seed,
+        samples_per_site=samples_per_site,
+    )
+    if name_filters:
+        mutants = [
+            mutant
+            for mutant in mutants
+            if any(name_filter in mutant.name for name_filter in name_filters)
+        ]
+    mutants = select_diverse_replay_input_mutants(mutants, limit=limit)
+
+    summary_path = artifact_dir / "summary.jsonl"
+    classification_counts: Counter[str] = Counter()
+    interesting_cases = 0
+    with summary_path.open("w", encoding="utf-8") as summary_handle:
+        for case_index, mutant in enumerate(mutants, start=1):
+            result = _run_mutant(
+                mutant,
+                case_index=case_index,
+                artifact_dir=artifact_dir,
+                binary=headless_bin,
+                game_dir=game_dir,
+                stage=resolved_stage,
+                seed=seed,
+                difficulty=resolved_difficulty,
+                character=resolved_character,
+                shot_type=resolved_shot_type,
+                max_ticks=resolved_max_ticks,
+                continue_after_hit=continue_after_hit,
+                timeout_seconds=timeout_seconds,
+                trace_compact_counts=trace_compact_counts,
+                baseline_records=baseline_records,
+            )
+            if result["interesting"]:
+                classification_counts["interesting"] += 1
+                interesting_cases += 1
+            else:
+                classification_counts["boring"] += 1
+            summary_handle.write(json.dumps(result) + "\n")
+            if emit_stdout:
+                print(json.dumps(result, ensure_ascii=False))
+
+    report = {
+        "schema": "danmakufuzz-semantic-replay-campaign-v1",
+        "seed_replay": str(seed_replay_path.resolve()),
+        "seed_runtime": seed_runtime,
+        "baseline_actions": str(baseline_actions_path.resolve()),
+        "baseline": baseline_metadata,
+        "stage": resolved_stage,
+        "seed": seed,
+        "random_seed": random_seed,
+        "samples_per_site": samples_per_site,
+        "mutants_generated": len(mutants),
+        "interesting_cases": interesting_cases,
+        "classification_counts": dict(sorted(classification_counts.items())),
+        "summary": str(summary_path.resolve()),
+    }
+    (artifact_dir / "campaign.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    if emit_stdout:
+        print(json.dumps(report, indent=2))
+    return report
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run a replay-derived semantic/desync campaign by turning TH06 replay stage data into raw headless input masks."
@@ -276,115 +417,30 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    artifact_dir = (args.artifact_dir or _default_artifact_dir()).resolve()
-    ensure_directory(artifact_dir)
-
     input_path = args.input.resolve() if args.input is not None else None
-    actions_path = args.actions.resolve()
-    seed_payload, seed_runtime, baseline_input_masks = _materialize_seed_replay(
+    report = run_replay_desync_campaign(
+        artifact_dir=(args.artifact_dir or _default_artifact_dir()).resolve(),
         input_path=input_path,
-        actions_path=actions_path,
+        actions_path=args.actions.resolve(),
+        game_dir=args.game_dir.resolve(),
+        headless_bin=args.headless_bin.resolve(),
         stage=args.stage,
+        seed=args.seed,
         difficulty=args.difficulty,
         character=args.character,
         shot_type=args.shot_type,
+        max_ticks=args.max_ticks,
+        timeout_seconds=args.timeout_seconds,
         auto_shoot=args.auto_shoot,
-    )
-    stage = int(seed_runtime["stage"])
-    difficulty = int(seed_runtime["difficulty"])
-    character = int(seed_runtime["character"])
-    shot_type = int(seed_runtime["shot_type"])
-    max_ticks = args.max_ticks if args.max_ticks is not None else len(baseline_input_masks)
-
-    seed_replay_path = artifact_dir / "seed.rpy"
-    seed_replay_path.write_bytes(seed_payload)
-    baseline_actions_path = artifact_dir / "baseline-actions.txt"
-    baseline_actions_path.write_text(serialize_mask_actions(baseline_input_masks[:max_ticks]), encoding="utf-8")
-
-    baseline_dir = artifact_dir / "_baseline"
-    baseline_metadata = run_baseline(
-        binary=args.headless_bin.resolve(),
-        game_dir=args.game_dir.resolve(),
-        resource_override_dir=None,
-        stage=stage,
-        seed=args.seed,
-        action_file=baseline_actions_path,
-        artifact_dir=baseline_dir,
-        difficulty=difficulty,
-        character=character,
-        shot_type=shot_type,
-        max_ticks=max_ticks,
-        auto_shoot=False,
         continue_after_hit=args.continue_after_hit,
         trace_compact_counts=args.trace_compact_counts,
-        log_path=baseline_dir / "run.log",
-        dry_run=False,
-    )
-    baseline_trace = Path(str(baseline_metadata["trace"]))
-    baseline_records = load_trace_records(baseline_trace) if baseline_trace.is_file() else None
-
-    mutants = generate_replay_input_mutants(
-        seed_payload,
-        stage=stage,
-        max_frames=max_ticks,
         random_seed=args.random_seed,
         samples_per_site=args.samples_per_site,
+        limit=args.limit,
+        name_filters=list(args.name_filter or []),
+        emit_stdout=True,
     )
-    if args.name_filter:
-        mutants = [
-            mutant
-            for mutant in mutants
-            if any(name_filter in mutant.name for name_filter in args.name_filter)
-        ]
-    mutants = select_diverse_replay_input_mutants(mutants, limit=args.limit)
-
-    summary_path = artifact_dir / "summary.jsonl"
-    classification_counts: Counter[str] = Counter()
-    interesting_cases = 0
-    with summary_path.open("w", encoding="utf-8") as summary_handle:
-        for case_index, mutant in enumerate(mutants, start=1):
-            result = _run_mutant(
-                mutant,
-                case_index=case_index,
-                artifact_dir=artifact_dir,
-                binary=args.headless_bin.resolve(),
-                game_dir=args.game_dir.resolve(),
-                stage=stage,
-                seed=args.seed,
-                difficulty=difficulty,
-                character=character,
-                shot_type=shot_type,
-                max_ticks=max_ticks,
-                continue_after_hit=args.continue_after_hit,
-                timeout_seconds=args.timeout_seconds,
-                trace_compact_counts=args.trace_compact_counts,
-                baseline_records=baseline_records,
-            )
-            if result["interesting"]:
-                classification_counts["interesting"] += 1
-                interesting_cases += 1
-            else:
-                classification_counts["boring"] += 1
-            summary_handle.write(json.dumps(result) + "\n")
-            print(json.dumps(result, ensure_ascii=False))
-
-    report = {
-        "schema": "danmakufuzz-semantic-replay-campaign-v1",
-        "seed_replay": str(seed_replay_path.resolve()),
-        "seed_runtime": seed_runtime,
-        "baseline_actions": str(baseline_actions_path.resolve()),
-        "baseline": baseline_metadata,
-        "stage": stage,
-        "seed": args.seed,
-        "random_seed": args.random_seed,
-        "samples_per_site": args.samples_per_site,
-        "mutants_generated": len(mutants),
-        "interesting_cases": interesting_cases,
-        "classification_counts": dict(sorted(classification_counts.items())),
-        "summary": str(summary_path.resolve()),
-    }
-    (artifact_dir / "campaign.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(report, indent=2))
+    _ = report
     return 0
 
 

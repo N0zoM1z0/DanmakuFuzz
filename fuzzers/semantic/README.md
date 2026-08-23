@@ -285,6 +285,39 @@ replay-style compressed input timeline:
 The artifact root keeps `seed.rpy`, `baseline-actions.txt`, one per-case
 `input.rpy`, and the usual `summary.jsonl` / `campaign.json`.
 
+When you want to feed real full-game `.rpy` corpora instead of a single
+isolated stage replay, use the corpus runner:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_corpus_campaign \
+  --input-dir artifacts/replay-corpus-public/th06 \
+  --limit-replays 3 \
+  --limit-stage-slots 6 \
+  --limit 6 \
+  --continue-after-hit \
+  --trace-compact-counts
+```
+
+This runner validates each replay, enumerates its populated stage slots, and
+then launches one child replay-desync campaign per `(replay, stage-slot)` pair.
+That matters for public TH06 corpora because most score replays are full-game
+records with stages `1..6` populated, while Extra records usually only populate
+slot `7`.
+
+The tracked source-of-truth for the initial public TH06 corpus lives under:
+
+```text
+reference/corpus/replay/public/th06/
+```
+
+Rebuild it locally with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.corpus.fetch_public_replays \
+  --manifest reference/corpus/replay/public/th06/manifest.json \
+  --output-dir artifacts/replay-corpus-public/th06
+```
+
 ## Coordinated resource lane
 
 Run coordinated stage-resource mutation with:
@@ -320,6 +353,34 @@ The current implementation is still TH06-backed for execution, but the case
 construction is intentionally stage-resource-oriented rather than hardcoding
 TH06-only stage logic. That is the piece meant to carry forward into later
 games first.
+
+Each coordinated-resource campaign now also writes `clusters.json` beside
+`summary.jsonl`, with two useful views:
+
+- `exact_clusters`, grouped by exact `trace_sha256`;
+- `sink_clusters`, grouped by a coarser sink signature derived from the late
+  trace snapshot.
+
+Rebuild that clustering later from a result, summary, campaign, or whole
+artifact directory with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.resource_coordination_cluster \
+  --result artifacts/tmp-resource-coordination-smoke
+```
+
+And minimize one coordinated bundle by dropping whole override files while
+preserving the same coarse sink with:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.resource_coordination_minimize \
+  --result artifacts/tmp-resource-coordination-smoke/0004-anm-triad-first-instr-opcode-255/result.json
+```
+
+The current Stage 7 `anm-triad` / `anm-ecl` SIGSEGV basin is a good example of
+why this matters: multiple different coordinated bundles collapse into the same
+late `tick=440` sink, and the minimizer shows that sink is reducible to just
+`stg7enm.anm`.
 
 The generic differential oracle is intentionally a bit stricter than before for
 plain bullet-count drift. It still keeps large sustained surges and collapses,

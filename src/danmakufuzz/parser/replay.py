@@ -424,6 +424,43 @@ def replay_stage_action_masks(data: bytes, stage: int, *, max_frames: int | None
     return expand_replay_input_bookmarks(stage_data.input_bookmarks, max_frames=max_frames)
 
 
+def replay_populated_stages(data: bytes) -> tuple[int, ...]:
+    populated: list[int] = []
+    for stage_index, stage_data in enumerate(parse_stage_replay_data(data), start=1):
+        if stage_data is not None:
+            populated.append(stage_index)
+    return tuple(populated)
+
+
+def isolate_replay_stage(seed_payload: bytes, stage: int) -> bytes:
+    if not (1 <= stage <= 7):
+        raise ValueError(f"replay stage slot must be 1..7, got {stage}")
+    decoded = deobfuscate_replay(seed_payload)
+    header = ReplayHeader.from_buffer_copy(decoded)
+    stage_payloads = extract_stage_payloads(seed_payload)
+    target_payload = stage_payloads[stage - 1]
+    if target_payload is None:
+        raise ValueError(f"replay payload has no stage {stage} data")
+    stage_slots: list[bytes | None] = [None] * 7
+    stage_slots[stage - 1] = target_payload
+    return build_replay_with_stage_slots(
+        version=int(header.version),
+        shottype_chara=int(header.shottypeChara),
+        difficulty=int(header.difficulty),
+        key=int(header.key),
+        rng_value1=int(header.rngValue1),
+        rng_value2=int(header.rngValue2),
+        rng_value3=int(header.rngValue3),
+        date=_decode_ascii(bytes(header.date)),
+        name=_decode_ascii(bytes(header.name)),
+        score=int(header.score),
+        slowdown_rate=float(header.slowdownRate),
+        slowdown_rate2=float(header.slowdownRate2),
+        slowdown_rate3=float(header.slowdownRate3),
+        stage_payloads_by_slot=stage_slots,
+    )
+
+
 def replace_replay_stage_payloads(seed_payload: bytes, payload_overrides: Mapping[int, bytes]) -> bytes:
     decoded = deobfuscate_replay(seed_payload)
     header = ReplayHeader.from_buffer_copy(decoded)

@@ -1,0 +1,73 @@
+{
+  "schema": "danmakufuzz-public-replay-corpus-v1",
+  "game": "th06",
+  "generated_on": "2026-08-23",
+  "entries": [
+    {
+      "name": "fairysvoice-th6-001",
+      "filename": "fairysvoice-th6-001.rpy",
+      "source_page": "https://fairysvoice.net/replays/",
+      "url": "https://fairysvoice.net/replays/touhou/th6_udaaaa.rpy",
+      "sha256": "a2ab6d04e14817a097d49f9659387c92cc4109a9ea7fe36a1068eb3a6cce4f3d",
+      "size": 56360,
+      "difficulty": 1,
+      "shottype_chara": 1,
+      "populated_stages": [1, 2, 3, 4, 5, 6]
+    },
+    {
+      "name": "fairysvoice-th6-002",
+      "filename": "fairysvoice-th6-002.rpy",
+      "source_page": "https://fairysvoice.net/replays/",
+      "url": "https://fairysvoice.net/replays/touhou/th6_udaaab.rpy",
+      "sha256": "b91f5239865fbab95e03b08918c542899b043462b691a54bf0bbf50b059dcc31",
+      "size": 24616,
+      "difficulty": 4,
+      "shottype_chara": 1,
+      "populated_stages": [7]
+    },
+    {
+      "name": "gensokyo-th6-801",
+      "filename": "gensokyo-th6-801.rpy",
+      "source_page": "https://maribelhearn.com/gensokyo?diff=-&game=-&player=Ihavenoname248&shot=&type=-",
+      "url": "https://maribelhearn.com/replays/gensokyo/16000/th6_udI801.rpy",
+      "sha256": "2e73a458d48f005b77753b77a2661767bcb898644395f69eea9c351cd6e2137e",
+      "size": 57264,
+      "difficulty": 3,
+      "shottype_chara": 0,
+      "populated_stages": [1, 2, 3, 4, 5, 6]
+    },
+    {
+      "name": "gensokyo-th6-802",
+      "filename": "gensokyo-th6-802.rpy",
+      "source_page": "https://maribelhearn.com/gensokyo?diff=-&game=-&player=Ihavenoname248&shot=&type=-",
+      "url": "https://maribelhearn.com/replays/gensokyo/17349/th6_udI802.rpy",
+      "sha256": "fcfa86626b44662b06fa5da895a0a8ec89ca34cafa96e6f72315f799e5964057",
+      "size": 56512,
+      "difficulty": 1,
+      "shottype_chara": 1,
+      "populated_stages": [1, 2, 3, 4, 5, 6]
+    },
+    {
+      "name": "gensokyo-th6-803",
+      "filename": "gensokyo-th6-803.rpy",
+      "source_page": "https://maribelhearn.com/gensokyo?diff=-&game=-&player=Ihavenoname248&shot=&type=-",
+      "url": "https://maribelhearn.com/replays/gensokyo/17836/th6_udI803.rpy",
+      "sha256": "db4078e8202a8ac615da36fe92dd5904abcfc2dae92dff3e3f14783e76b42ec6",
+      "size": 25136,
+      "difficulty": 4,
+      "shottype_chara": 1,
+      "populated_stages": [7]
+    },
+    {
+      "name": "gensokyo-th6-804",
+      "filename": "gensokyo-th6-804.rpy",
+      "source_page": "https://maribelhearn.com/gensokyo?diff=-&game=-&player=Ihavenoname248&shot=&type=-",
+      "url": "https://maribelhearn.com/replays/gensokyo/19573/th6_udI804.rpy",
+      "sha256": "dd777e881787ab7573d64e4ccbc58a6a851f5d1cb764978b480b41f5be2fb4a9",
+      "size": 59984,
+      "difficulty": 1,
+      "shottype_chara": 2,
+      "populated_stages": [1, 2, 3, 4, 5, 6]
+    }
+  ]
+}

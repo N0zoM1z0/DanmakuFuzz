@@ -6,7 +6,17 @@ __pycache__/
 codex-local
 
 artifacts/
-reference/
+reference/*
+!reference/corpus/
+reference/corpus/*
+!reference/corpus/replay/
+reference/corpus/replay/*
+!reference/corpus/replay/public/
+reference/corpus/replay/public/*
+!reference/corpus/replay/public/th06/
+reference/corpus/replay/public/th06/*
+!reference/corpus/replay/public/th06/README.md
+!reference/corpus/replay/public/th06/manifest.json
 state/
 tmp/
 
@@ -18,3 +28,4 @@ third_party/th06-headless/.vs/
 *.jsonl
 *.tmp
 *.rar
+*.rpy

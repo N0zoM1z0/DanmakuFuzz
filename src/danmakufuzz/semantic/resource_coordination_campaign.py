@@ -25,6 +25,8 @@ from ..parser.anm import DEFAULT_ARCHIVE, parse_anm
 from ..parser.anm_campaign import evaluate_anm_payload
 from ..parser.anm_mutants import AnmMutant, generate_anm_mutants
 from ..repo import ARTIFACTS_DIR, REFERENCE_DIR, ensure_directory
+from .resource_coordination_cluster import build_resource_coordination_clusters
+from .resource_coordination_common import first_diff_line, sink_signature_from_records, trace_sha256
 from .ecl_campaign import classify_process_result
 from .payload_mutants import PayloadMutant, generate_payload_mutants
 
@@ -279,12 +281,15 @@ def _run_case(
         findings.extend(score_trace_path_with_baseline(trace_path, baseline_records=baseline_records))
     elif not findings:
         findings.append(Finding("empty-trace", "headless run finished without a non-empty trace"))
+    trace_records = load_trace_records(trace_path) if trace_path.is_file() and trace_path.stat().st_size > 0 else []
+    sink_signature, sink_snapshot, sink_tick = sink_signature_from_records(trace_records)
     result = {
         "case_name": case_name,
         "source": case["source"],
         "metadata": case["metadata"],
         "override_keys": sorted(override_payloads),
         "command": command,
+        "cwd": str(game_dir.resolve()),
         "stage": stage,
         "seed": seed,
         "elapsed_seconds": elapsed_seconds,
@@ -292,9 +297,15 @@ def _run_case(
         "timed_out": timed_out,
         "trace": str(trace_path.resolve()),
         "trace_lines": _trace_line_count(trace_path),
+        "trace_sha256": trace_sha256(trace_path),
+        "first_diff_line": first_diff_line(baseline_records, trace_records) if trace_records else None,
+        "sink_signature": sink_signature,
+        "sink_snapshot": sink_snapshot,
+        "sink_tick": sink_tick,
         "log": str(log_path.resolve()),
         "override_dir": str(override_dir.resolve()),
         "active_override_dir": str(active_override_dir.resolve()),
+        "override_payload_sizes": {key: len(payload) for key, payload in sorted(override_payloads.items())},
         "findings": _finding_records(findings),
         "finding_kinds": [finding.kind for finding in findings],
         "interesting": bool(findings),
@@ -406,6 +417,7 @@ def main() -> int:
     finding_kind_counts: Counter[str] = Counter()
     source_counts: Counter[str] = Counter()
     with summary_path.open("w", encoding="utf-8") as summary_handle:
+        result_paths: list[Path] = []
         for case_index, case in enumerate(cases, start=1):
             result = _run_case(
                 artifact_dir=artifact_dir,
@@ -431,7 +443,18 @@ def main() -> int:
             for finding_kind in result["finding_kinds"]:
                 finding_kind_counts[str(finding_kind)] += 1
             summary_handle.write(json.dumps(result) + "\n")
+            result_paths.append(Path(str(result["result_path"])).resolve())
             print(json.dumps(result, ensure_ascii=False))
+
+    clusters_path = artifact_dir / "clusters.json"
+    clusters_payload = build_resource_coordination_clusters(
+        result_paths,
+        minimized_dir=ARTIFACTS_DIR / "resource-coordination-minimized",
+        include_non_interesting=False,
+        member_limit=8,
+        minimized_limit=8,
+    )
+    clusters_path.write_text(json.dumps(clusters_payload, indent=2) + "\n", encoding="utf-8")
 
     report = {
         "schema": "danmakufuzz-semantic-resource-coordination-v1",
@@ -448,6 +471,7 @@ def main() -> int:
         "source_counts": dict(sorted(source_counts.items())),
         "finding_kind_counts": dict(sorted(finding_kind_counts.items())),
         "summary": str(summary_path.resolve()),
+        "clusters": str(clusters_path.resolve()),
         "baseline": baseline_metadata,
     }
     (artifact_dir / "campaign.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
