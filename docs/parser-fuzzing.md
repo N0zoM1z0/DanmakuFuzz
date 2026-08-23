@@ -20,5 +20,10 @@ Current first-pass parser-lane entrypoints:
   `accepted`;
 - `danmakufuzz.parser.replay` validates replay magic, deobfuscation, checksum,
   version, and stage offsets;
+- `danmakufuzz.parser.replay_campaign` mutates one replay seed and classifies
+  each accepted case by which summary fields changed;
 - `danmakufuzz.parser.stage_std` walks the stage header, object table, quad
   chains, and script region summary.
+- `danmakufuzz.parser.stage_std_campaign` mutates one retail `.std` seed and
+  classifies each case as rejected or accepted-with-drift against the baseline
+  stage walk summary.
