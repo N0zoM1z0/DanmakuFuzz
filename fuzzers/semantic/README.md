@@ -297,7 +297,9 @@ Replay mutation now has three profiles:
 - `coordinated`: mutate multiple replay-native sites together, currently
   `header-route + stage-seed`, `header-difficulty + stage-seed`,
   `stage-payload-borrow + stage-seed`, and
-  `stage-payload-borrow + header-route + stage-seed`;
+  `stage-payload-borrow + header-route + stage-seed`, plus
+  stage-local `bookmark + stage-seed` combinations for single-slot replays
+  such as Extra-stage corpora;
 - `all`: combine `input + native`, then apply the same diverse selection pass;
 - `all-coordinated`: combine `coordinated + input + native`.
 
@@ -339,6 +341,17 @@ Replay clustering groups cases three ways:
   metadata, so one replay-specific mutant like `stage-payload-borrow-next-s2`
   can be reviewed across multiple source replays even when each trace hash is
   different.
+
+It also emits two replay-specific post-pass views for the noisy
+`replay-stable-trace-drift` class:
+
+- `stable_drift_clusters`, which collapse “same late wedge, different replay
+  prelude” cases more aggressively and keep non-stable companion findings such
+  as `stage-script-drift`, `ecl-timeline-drift`, `stalled-progress`, or
+  `process-exit`;
+- `stable_drift_review_queue`, which reprioritizes those clusters for human
+  review and adds a greedy `mutant_cover`, so one basin with many near-duplicate
+  mutants can be reviewed from a much smaller representative subset.
 
 Rebuild that summary later from any replay result, summary, campaign, or a
 whole replay artifact tree with:
@@ -415,6 +428,37 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_corpus_campaign \
   --continue-after-hit \
   --trace-compact-counts \
   --artifact-dir artifacts/replay-coordinated-stage4-borrow-focus-v1
+```
+
+For an Extra-only coordinated harvest, where stage-payload borrowing is usually
+unavailable and the new `bookmark + seed` families matter, use:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_corpus_campaign \
+  --input artifacts/replay-corpus-public/th06/fairysvoice-th6-002.rpy \
+  --input artifacts/replay-corpus-public/th06/gensokyo-th6-803.rpy \
+  --stage-filter 7 \
+  --max-ticks 1800 \
+  --mutant-profile coordinated \
+  --limit 12 \
+  --continue-after-hit \
+  --trace-compact-counts \
+  --artifact-dir artifacts/replay-coordinated-extra-v2
+```
+
+And the broader coordinated corpus harvest used on August 23, 2026 was:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_corpus_campaign \
+  --input-dir artifacts/replay-corpus-public/th06 \
+  --stage-filter 1 --stage-filter 2 --stage-filter 3 \
+  --stage-filter 4 --stage-filter 5 --stage-filter 6 --stage-filter 7 \
+  --max-ticks 1800 \
+  --mutant-profile coordinated \
+  --limit 8 \
+  --continue-after-hit \
+  --trace-compact-counts \
+  --artifact-dir artifacts/replay-coordinated-corpus-v2
 ```
 
 ## Coordinated resource lane

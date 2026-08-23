@@ -185,6 +185,25 @@ def _sample_candidates(
     return anchors
 
 
+def _selected_bookmark_indexes(
+    bookmarks: Sequence[ReplayInputBookmark],
+    *,
+    stage: int,
+    random_seed: int,
+    budget: int,
+) -> list[int]:
+    candidate_indexes = _candidate_bookmark_indexes(bookmarks)
+    if not candidate_indexes:
+        return []
+    if len(candidate_indexes) <= budget:
+        return candidate_indexes
+    rng = _site_rng(random_seed, family="bookmark-sites", site=stage)
+    extras = candidate_indexes[:]
+    rng.shuffle(extras)
+    keep = set(candidate_indexes[:2] + extras[: max(0, budget - 2)])
+    return sorted(keep)
+
+
 def _add_mutant(
     mutants: list[ReplayInputMutant],
     seen: set[str],
@@ -307,15 +326,12 @@ def generate_replay_native_mutants(
         )
 
     bookmarks = stage_data.input_bookmarks
-    candidate_indexes = _candidate_bookmark_indexes(bookmarks)
-    if candidate_indexes:
-        bookmark_budget = max(2, samples_per_site)
-        rng = _site_rng(random_seed, family="bookmark-sites", site=stage)
-        if len(candidate_indexes) > bookmark_budget:
-            extras = candidate_indexes[:]
-            rng.shuffle(extras)
-            keep = set(candidate_indexes[:2] + extras[: max(0, bookmark_budget - 2)])
-            candidate_indexes = sorted(keep)
+    candidate_indexes = _selected_bookmark_indexes(
+        bookmarks,
+        stage=stage,
+        random_seed=random_seed,
+        budget=max(2, samples_per_site),
+    )
 
     for index in candidate_indexes:
         frame = int(bookmarks[index].frame)
@@ -513,8 +529,91 @@ def generate_replay_coordinated_mutants(
         for neighbor_stage, direction in ((stage - 1, "prev"), (stage + 1, "next"))
         if 1 <= neighbor_stage <= 7 and parsed[neighbor_stage - 1] is not None
     ]
+    bookmark_indexes = _selected_bookmark_indexes(
+        stage_data.input_bookmarks,
+        stage=stage,
+        random_seed=random_seed ^ 0x5A17E,
+        budget=min(2, max(2, coord_budget)),
+    )
     triad_seed_values = selected_seeds[: min(2, len(selected_seeds))]
     triad_routes = selected_routes[:1]
+    bookmark_seed_values = selected_seeds[: min(2, len(selected_seeds))]
+
+    for index in bookmark_indexes:
+        frame = int(stage_data.input_bookmarks[index].frame)
+        for family, builder in (
+            ("coordinated-bookmark-drop-seed", _mutated_bookmarks_drop),
+            ("coordinated-bookmark-cut-tail-seed", _mutated_bookmarks_cut_tail),
+            ("coordinated-bookmark-snap-prev-seed", _mutated_bookmarks_snap_prev),
+        ):
+            mutated_bookmarks = builder(stage_data.input_bookmarks, index=index)
+            if mutated_bookmarks is None:
+                continue
+            for seed_value in bookmark_seed_values:
+                stage_payload = _stage_payload_from_bookmarks(
+                    stage_data,
+                    mutated_bookmarks,
+                    random_seed=seed_value,
+                )
+                payload = replace_replay_stage_payloads(seed_payload, {stage: stage_payload})
+                _add_mutant(
+                    mutants,
+                    seen,
+                    name=f"{family}-i{index:03d}-t{frame}-s{seed_value & 0xFFFF:04x}",
+                    payload=payload,
+                    stage=stage,
+                    source="replay-coordinated",
+                    metadata={
+                        "family": family,
+                        "site_key": f"stage{stage}:bookmark-seed:{index:03d}",
+                        "stage": stage,
+                        "bookmark_index": index,
+                        "frame": frame,
+                        "random_seed": seed_value,
+                        "random_seed_u16": seed_value & 0xFFFF,
+                        "coordination": [family.removeprefix("coordinated-").removesuffix("-seed"), "stage-seed"],
+                    },
+                    max_frames=max_frames,
+                )
+
+        shift_rng = _site_rng(random_seed, family="coordinated-bookmark-shift", site=(stage << 16) ^ index)
+        deltas = sorted({4, 8, 16, max(1, shift_rng.randrange(2, 48))})
+        for delta in deltas[: min(2, len(deltas))]:
+            for direction_name, signed_delta in (("early", -delta), ("late", delta)):
+                mutated_bookmarks = _mutated_bookmarks_shift(stage_data.input_bookmarks, index=index, delta=signed_delta)
+                if mutated_bookmarks is None:
+                    continue
+                for seed_value in bookmark_seed_values[:1]:
+                    stage_payload = _stage_payload_from_bookmarks(
+                        stage_data,
+                        mutated_bookmarks,
+                        random_seed=seed_value,
+                    )
+                    payload = replace_replay_stage_payloads(seed_payload, {stage: stage_payload})
+                    _add_mutant(
+                        mutants,
+                        seen,
+                        name=(
+                            f"coordinated-bookmark-shift-{direction_name}-seed-d{delta}"
+                            f"-i{index:03d}-t{frame}-s{seed_value & 0xFFFF:04x}"
+                        ),
+                        payload=payload,
+                        stage=stage,
+                        source="replay-coordinated",
+                        metadata={
+                            "family": "coordinated-bookmark-shift-seed",
+                            "site_key": f"stage{stage}:bookmark-seed:{index:03d}",
+                            "stage": stage,
+                            "bookmark_index": index,
+                            "frame": frame,
+                            "delta": signed_delta,
+                            "random_seed": seed_value,
+                            "random_seed_u16": seed_value & 0xFFFF,
+                            "coordination": ["bookmark-shift", "stage-seed"],
+                        },
+                        max_frames=max_frames,
+                    )
+
     for neighbor_stage, direction in neighbor_specs:
         neighbor_data = parsed[neighbor_stage - 1]
         if neighbor_data is None:

@@ -22,6 +22,13 @@ from .resource_coordination_common import (
 
 
 DEFAULT_MEMBER_LIMIT = 8
+NONSTABLE_FINDING_WEIGHTS: dict[str, int] = {
+    "stalled-progress": 80,
+    "stage-script-drift": 70,
+    "ecl-timeline-drift": 60,
+    "stalled-frame": 50,
+    "process-exit": 10,
+}
 
 
 @dataclass(frozen=True)
@@ -59,6 +66,7 @@ class ReplayCase:
     sink_tick: int | None
     primary_finding_kind: str | None
     primary_finding_detail: str | None
+    finding_kinds: tuple[str, ...]
     finding_keys: tuple[str, ...]
 
     @property
@@ -112,6 +120,24 @@ class ReplayCase:
             f"|site={self.site_key}|returncode={self.returncode}|timed_out={self.timed_out}"
             f"|terminal={self.terminal_reason}|instruction_index={self.sink_instruction_index}"
             f"|first_diff={self.first_diff_line}"
+        )
+
+    @property
+    def has_stable_trace_drift(self) -> bool:
+        return "replay-stable-trace-drift" in self.finding_kinds
+
+    @property
+    def non_stable_finding_kinds(self) -> tuple[str, ...]:
+        return tuple(kind for kind in self.finding_kinds if kind != "replay-stable-trace-drift")
+
+    @property
+    def stable_drift_cluster_key(self) -> str:
+        extra = ",".join(sorted(set(self.non_stable_finding_kinds))) or "-"
+        return (
+            f"stage={self.stage}|classification={self.classification}|primary={self.primary_finding_kind}"
+            f"|family={self.family}|site={self.site_key}|returncode={self.returncode}|timed_out={self.timed_out}"
+            f"|terminal={self.terminal_reason}|instruction_index={self.sink_instruction_index}"
+            f"|extra={extra}"
         )
 
     def sort_key(self) -> tuple[object, ...]:
@@ -246,6 +272,24 @@ def _sorted_present(values: set[object]) -> list[object]:
     return sorted(present, key=lambda value: (str(type(value)), str(value)))
 
 
+def _stable_drift_sort_key(case: ReplayCase) -> tuple[object, ...]:
+    pure_stable = int(not case.non_stable_finding_kinds)
+    return (
+        pure_stable,
+        -(len(set(case.non_stable_finding_kinds))),
+        case.first_diff_line if case.first_diff_line is not None else 2**31 - 1,
+        case.action_count,
+        case.case_name,
+        str(case.result_path),
+    )
+
+
+def _nonstable_interest_score(kinds: set[str]) -> int:
+    if not kinds:
+        return 0
+    return sum(NONSTABLE_FINDING_WEIGHTS.get(kind, 20) for kind in kinds)
+
+
 def _case_summary(case: ReplayCase) -> dict[str, object]:
     return {
         "case_name": case.case_name,
@@ -315,6 +359,7 @@ def _load_case(path: Path, campaign_cache: dict[Path, dict[str, object]]) -> Rep
 
     ordered_findings = _ordered_findings(data)
     primary = ordered_findings[0] if ordered_findings else (None, None)
+    finding_kinds = tuple(kind for kind, _ in ordered_findings if isinstance(kind, str))
 
     return ReplayCase(
         result_path=path.resolve(),
@@ -352,6 +397,7 @@ def _load_case(path: Path, campaign_cache: dict[Path, dict[str, object]]) -> Rep
         sink_tick=sink_tick,
         primary_finding_kind=primary[0],
         primary_finding_detail=primary[1],
+        finding_kinds=finding_kinds,
         finding_keys=tuple(f"{kind}:{detail}" if detail else str(kind) for kind, detail in ordered_findings),
     )
 
@@ -461,6 +507,174 @@ def _pattern_cluster_summary(key: str, members: list[ReplayCase], *, member_limi
     }
 
 
+def _stable_drift_mutant_cover(members: list[ReplayCase]) -> list[dict[str, object]]:
+    by_mutant: dict[str, list[ReplayCase]] = defaultdict(list)
+    for case in members:
+        by_mutant[case.mutant_name].append(case)
+
+    target_sources = {case.seed_source for case in members if case.seed_source is not None}
+    target_nonstable = {
+        kind
+        for case in members
+        for kind in case.non_stable_finding_kinds
+    }
+    remaining_sources = set(target_sources)
+    remaining_nonstable = set(target_nonstable)
+    selected: list[dict[str, object]] = []
+    seen_mutants: set[str] = set()
+
+    while len(seen_mutants) < len(by_mutant):
+        best_name: str | None = None
+        best_members: list[ReplayCase] | None = None
+        best_score: tuple[object, ...] | None = None
+        for mutant_name, mutant_members in by_mutant.items():
+            if mutant_name in seen_mutants:
+                continue
+            mutant_sources = {case.seed_source for case in mutant_members if case.seed_source is not None}
+            mutant_nonstable = {
+                kind
+                for case in mutant_members
+                for kind in case.non_stable_finding_kinds
+            }
+            new_sources = len(mutant_sources & remaining_sources)
+            new_nonstable = len(mutant_nonstable & remaining_nonstable)
+            if not selected and not target_sources and not target_nonstable:
+                new_sources = len(mutant_sources)
+            best_case = min(mutant_members, key=_stable_drift_sort_key)
+            score = (
+                new_sources,
+                new_nonstable,
+                len(mutant_members),
+                -(_stable_drift_sort_key(best_case)[0]),
+                -(best_case.first_diff_line if best_case.first_diff_line is not None else 2**31 - 1),
+                -len(mutant_name),
+            )
+            if best_score is None or score > best_score:
+                best_name = mutant_name
+                best_members = mutant_members
+                best_score = score
+        if best_name is None or best_members is None:
+            break
+        seen_mutants.add(best_name)
+        representative = min(best_members, key=_stable_drift_sort_key)
+        mutant_sources = {case.seed_source for case in best_members if case.seed_source is not None}
+        mutant_nonstable = {
+            kind
+            for case in best_members
+            for kind in case.non_stable_finding_kinds
+        }
+        remaining_sources -= mutant_sources
+        remaining_nonstable -= mutant_nonstable
+        selected.append(
+            {
+                "mutant_name": best_name,
+                "cases": len(best_members),
+                "seed_sources": _sorted_present(mutant_sources),
+                "nonstable_finding_kinds": sorted(mutant_nonstable),
+                "representative": _case_summary(representative),
+            }
+        )
+        if not remaining_sources and not remaining_nonstable:
+            break
+
+    if not selected and members:
+        representative = min(members, key=_stable_drift_sort_key)
+        selected.append(
+            {
+                "mutant_name": representative.mutant_name,
+                "cases": 1,
+                "seed_sources": _sorted_present({representative.seed_source}),
+                "nonstable_finding_kinds": sorted(set(representative.non_stable_finding_kinds)),
+                "representative": _case_summary(representative),
+            }
+        )
+    return selected
+
+
+def _stable_drift_cluster_summary(key: str, members: list[ReplayCase], *, member_limit: int) -> dict[str, object]:
+    members_sorted = sorted(members, key=_stable_drift_sort_key)
+    representative = members_sorted[0]
+    cover = _stable_drift_mutant_cover(members_sorted)
+    nonstable_kinds = {
+        kind
+        for case in members_sorted
+        for kind in case.non_stable_finding_kinds
+    }
+    interest_score = _nonstable_interest_score(nonstable_kinds)
+    primary_finding_kinds = _sorted_present({case.primary_finding_kind for case in members_sorted})
+    return {
+        "cluster_key": key,
+        "cluster_kind": "stable-drift-basin",
+        "cases": len(members_sorted),
+        "stage": representative.stage,
+        "classification": representative.classification,
+        "primary_finding_kinds": primary_finding_kinds,
+        "family": representative.family,
+        "site_key": representative.site_key,
+        "returncode": representative.returncode,
+        "timed_out": representative.timed_out,
+        "terminal_reason": representative.terminal_reason,
+        "instruction_index": representative.sink_instruction_index,
+        "trace_sha256_count": len({case.trace_sha256 for case in members_sorted if case.trace_sha256 is not None}),
+        "sink_signature_count": len({case.sink_signature for case in members_sorted if case.sink_signature is not None}),
+        "seed_source_count": len({case.seed_source for case in members_sorted if case.seed_source is not None}),
+        "mutant_name_count": len({case.mutant_name for case in members_sorted}),
+        "pure_stable_cases": sum(1 for case in members_sorted if not case.non_stable_finding_kinds),
+        "semantic_wedge_cases": sum(1 for case in members_sorted if case.non_stable_finding_kinds),
+        "nonstable_finding_kinds": sorted(nonstable_kinds),
+        "interest_score": interest_score,
+        "mutant_names": _sorted_present({case.mutant_name for case in members_sorted}),
+        "seed_sources": _sorted_present({case.seed_source for case in members_sorted}),
+        "runtime_seeds": _sorted_present({case.runtime_seed for case in members_sorted}),
+        "first_diff_lines": _sorted_present({case.first_diff_line for case in members_sorted}),
+        "trace_sha256s": _sorted_present({case.trace_sha256 for case in members_sorted}),
+        "sink_signatures": _sorted_present({case.sink_signature for case in members_sorted}),
+        "mutant_cover": cover,
+        "cover_size": len(cover),
+        "representative": _case_summary(representative),
+        "preferred_handoff": _representative_handoff(members_sorted),
+        "members": [_case_summary(case) for case in members_sorted[:member_limit]],
+        "truncated_members": max(0, len(members_sorted) - member_limit),
+    }
+
+
+def _stable_drift_review_queue(stable_drift_clusters: list[dict[str, object]]) -> list[dict[str, object]]:
+    queue: list[dict[str, object]] = []
+    for row in stable_drift_clusters:
+        queue.append(
+            {
+                "cluster_key": row["cluster_key"],
+                "cluster_kind": row["cluster_kind"],
+                "stage": row["stage"],
+                "cases": row["cases"],
+                "family": row["family"],
+                "site_key": row["site_key"],
+                "primary_finding_kinds": row["primary_finding_kinds"],
+                "nonstable_finding_kinds": row["nonstable_finding_kinds"],
+                "seed_source_count": row["seed_source_count"],
+                "mutant_name_count": row["mutant_name_count"],
+                "semantic_wedge_cases": row["semantic_wedge_cases"],
+                "interest_score": row["interest_score"],
+                "pure_stable_cases": row["pure_stable_cases"],
+                "cover_size": row["cover_size"],
+                "mutant_cover": row["mutant_cover"],
+                "representative": row["representative"],
+                "preferred_handoff": row["preferred_handoff"],
+            }
+        )
+    queue.sort(
+        key=lambda row: (
+            -int(row["interest_score"]),
+            -int(row["semantic_wedge_cases"]),
+            -int(row["seed_source_count"]),
+            -int(row["cases"]),
+            int(row["cover_size"]),
+            str(row["cluster_key"]),
+        )
+    )
+    return queue
+
+
 def build_replay_clusters(
     result_paths: list[Path],
     *,
@@ -475,10 +689,13 @@ def build_replay_clusters(
     exact_groups: dict[str, list[ReplayCase]] = defaultdict(list)
     sink_groups: dict[str, list[ReplayCase]] = defaultdict(list)
     pattern_groups: dict[str, list[ReplayCase]] = defaultdict(list)
+    stable_drift_groups: dict[str, list[ReplayCase]] = defaultdict(list)
     for case in cases:
         exact_groups[case.exact_cluster_key].append(case)
         sink_groups[case.sink_cluster_key].append(case)
         pattern_groups[case.pattern_cluster_key].append(case)
+        if case.has_stable_trace_drift:
+            stable_drift_groups[case.stable_drift_cluster_key].append(case)
 
     exact_clusters = [
         _exact_cluster_summary(key, members, member_limit=member_limit)
@@ -492,9 +709,23 @@ def build_replay_clusters(
         _pattern_cluster_summary(key, members, member_limit=member_limit)
         for key, members in pattern_groups.items()
     ]
+    stable_drift_clusters = [
+        _stable_drift_cluster_summary(key, members, member_limit=member_limit)
+        for key, members in stable_drift_groups.items()
+    ]
     exact_clusters.sort(key=lambda row: (-int(row["cases"]), str(row["cluster_key"])))
     sink_clusters.sort(key=lambda row: (-int(row["cases"]), str(row["cluster_key"])))
     pattern_clusters.sort(key=lambda row: (-int(row["cases"]), str(row["cluster_key"])))
+    stable_drift_clusters.sort(
+        key=lambda row: (
+            -int(row["interest_score"]),
+            -int(row["semantic_wedge_cases"]),
+            -int(row["cases"]),
+            int(row["cover_size"]),
+            str(row["cluster_key"]),
+        )
+    )
+    stable_drift_queue = _stable_drift_review_queue(stable_drift_clusters)
 
     campaign_paths = sorted(
         {
@@ -505,12 +736,14 @@ def build_replay_clusters(
         }
     )
     return {
-        "schema": "danmakufuzz-semantic-replay-clusters-v1",
+        "schema": "danmakufuzz-semantic-replay-clusters-v2",
         "cases": len(cases),
         "campaigns": campaign_paths,
         "exact_clusters": exact_clusters,
         "sink_clusters": sink_clusters,
         "pattern_clusters": pattern_clusters,
+        "stable_drift_clusters": stable_drift_clusters,
+        "stable_drift_review_queue": stable_drift_queue,
     }
 
 
