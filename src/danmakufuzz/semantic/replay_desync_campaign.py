@@ -28,7 +28,7 @@ from ..parser.replay import (
 from ..repo import ARTIFACTS_DIR, ensure_directory
 from .input_campaign import _filter_findings, _repeat_desync_findings, _run_once, _trace_sha256
 from .replay_cluster import build_replay_clusters
-from .replay_native_mutants import generate_replay_native_mutants
+from .replay_native_mutants import generate_replay_coordinated_mutants, generate_replay_native_mutants
 from .replay_input_mutants import (
     ReplayInputMutant,
     generate_replay_input_mutants,
@@ -434,6 +434,35 @@ def run_replay_desync_campaign(
                 samples_per_site=samples_per_site,
             )
         )
+    if mutant_profile in {"coordinated", "all-coordinated"}:
+        mutants.extend(
+            generate_replay_coordinated_mutants(
+                seed_payload,
+                stage=resolved_stage,
+                max_frames=resolved_max_ticks,
+                random_seed=random_seed,
+                samples_per_site=samples_per_site,
+            )
+        )
+    if mutant_profile == "all-coordinated":
+        mutants.extend(
+            generate_replay_input_mutants(
+                seed_payload,
+                stage=resolved_stage,
+                max_frames=resolved_max_ticks,
+                random_seed=random_seed,
+                samples_per_site=samples_per_site,
+            )
+        )
+        mutants.extend(
+            generate_replay_native_mutants(
+                seed_payload,
+                stage=resolved_stage,
+                max_frames=resolved_max_ticks,
+                random_seed=random_seed,
+                samples_per_site=samples_per_site,
+            )
+        )
     deduped: list[ReplayInputMutant] = []
     seen_payloads: set[str] = set()
     for mutant in mutants:
@@ -543,7 +572,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--random-seed", type=int, default=0)
     parser.add_argument("--samples-per-site", type=int, default=4)
     parser.add_argument("--limit", type=int)
-    parser.add_argument("--mutant-profile", choices=("input", "native", "all"), default="all")
+    parser.add_argument(
+        "--mutant-profile",
+        choices=("input", "native", "coordinated", "all", "all-coordinated"),
+        default="all",
+    )
     parser.add_argument("--name-filter", action="append")
     return parser.parse_args()
 

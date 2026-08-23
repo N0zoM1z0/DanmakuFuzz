@@ -90,7 +90,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--random-seed", type=int, default=0)
     parser.add_argument("--samples-per-site", type=int, default=4)
     parser.add_argument("--limit", type=int)
-    parser.add_argument("--mutant-profile", choices=("input", "native", "all"), default="all")
+    parser.add_argument(
+        "--mutant-profile",
+        choices=("input", "native", "coordinated", "all", "all-coordinated"),
+        default="all",
+    )
     parser.add_argument("--name-filter", action="append")
     parser.add_argument("--limit-replays", type=int)
     parser.add_argument("--limit-stage-slots", type=int)

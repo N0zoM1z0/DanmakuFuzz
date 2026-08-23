@@ -23,9 +23,26 @@ from ..parser.replay import (
 from .replay_input_mutants import ReplayInputMutant
 
 
+STAGE_SEED_MUTATION_VALUES = (0, 1, 7, 0x1234, 0x7FFF, -1, -0x8000)
+
+
 def _replace_u8(buffer: bytes, offset: int, value: int) -> bytes:
     mutable = bytearray(buffer)
     struct.pack_into("<B", mutable, offset, value & 0xFF)
+    return bytes(mutable)
+
+
+def _replace_header_fields(
+    decoded: bytes,
+    *,
+    difficulty: int | None = None,
+    shottype_chara: int | None = None,
+) -> bytes:
+    mutable = bytearray(decoded)
+    if difficulty is not None:
+        struct.pack_into("<B", mutable, ReplayHeader.difficulty.offset, difficulty & 0xFF)
+    if shottype_chara is not None:
+        struct.pack_into("<B", mutable, ReplayHeader.shottypeChara.offset, shottype_chara & 0xFF)
     return bytes(mutable)
 
 
@@ -145,6 +162,27 @@ def _mutated_bookmarks_shift(
     mutated = list(bookmarks)
     mutated[index] = replace(current, frame=new_frame)
     return tuple(mutated)
+
+
+def _sample_candidates(
+    values: Sequence[int],
+    *,
+    budget: int,
+    rng: random.Random,
+) -> list[int]:
+    ordered = list(values)
+    if len(ordered) <= budget:
+        return ordered
+    anchors: list[int] = []
+    for candidate in (ordered[0], ordered[len(ordered) // 2], ordered[-1]):
+        if candidate not in anchors:
+            anchors.append(candidate)
+    if len(anchors) >= budget:
+        return anchors[:budget]
+    pool = [value for value in ordered if value not in anchors]
+    rng.shuffle(pool)
+    anchors.extend(pool[: max(0, budget - len(anchors))])
+    return anchors
 
 
 def _add_mutant(
@@ -358,4 +396,192 @@ def generate_replay_native_mutants(
             },
             max_frames=max_frames,
         )
+    return mutants
+
+
+def generate_replay_coordinated_mutants(
+    seed_payload: bytes,
+    *,
+    stage: int,
+    max_frames: int | None = None,
+    random_seed: int = 0,
+    samples_per_site: int = 4,
+) -> list[ReplayInputMutant]:
+    if not (1 <= stage <= 7):
+        raise ValueError(f"replay stage must be 1..7, got {stage}")
+    parsed = parse_stage_replay_data(seed_payload)
+    stage_data = parsed[stage - 1]
+    if stage_data is None:
+        raise ValueError(f"replay payload has no stage {stage} data")
+
+    decoded = deobfuscate_replay(seed_payload)
+    header = ReplayHeader.from_buffer_copy(decoded)
+    stage_payloads = extract_stage_payloads(seed_payload)
+    mutants: list[ReplayInputMutant] = []
+    seen: set[str] = set()
+
+    route_candidates = [value for value in range(4) if value != int(header.shottypeChara)]
+    difficulty_candidates = [value for value in range(4) if value != int(header.difficulty)]
+    seed_candidates = [value for value in STAGE_SEED_MUTATION_VALUES if value != int(stage_data.random_seed)]
+
+    coord_budget = max(2, samples_per_site)
+    route_rng = _site_rng(random_seed, family="coordinated-route", site=stage)
+    difficulty_rng = _site_rng(random_seed, family="coordinated-difficulty", site=stage)
+    seed_rng = _site_rng(random_seed, family="coordinated-seed", site=stage)
+    selected_routes = _sample_candidates(route_candidates, budget=min(2, len(route_candidates)), rng=route_rng)
+    selected_difficulties = _sample_candidates(
+        difficulty_candidates,
+        budget=min(2, len(difficulty_candidates)),
+        rng=difficulty_rng,
+    )
+    selected_seeds = _sample_candidates(
+        seed_candidates,
+        budget=min(max(3, coord_budget), len(seed_candidates)),
+        rng=seed_rng,
+    )
+
+    for shottype_chara in selected_routes:
+        for seed_value in selected_seeds[: min(3, len(selected_seeds))]:
+            stage_payload = _stage_payload_from_bookmarks(
+                stage_data,
+                stage_data.input_bookmarks,
+                random_seed=seed_value,
+            )
+            payload = replace_replay_stage_payloads(seed_payload, {stage: stage_payload})
+            coordinated_payload = _rechecksum(
+                _replace_header_fields(
+                    deobfuscate_replay(payload),
+                    shottype_chara=shottype_chara,
+                )
+            )
+            _add_mutant(
+                mutants,
+                seen,
+                name=f"coordinated-route-seed-r{shottype_chara}-s{seed_value & 0xFFFF:04x}",
+                payload=coordinated_payload,
+                stage=stage,
+                source="replay-coordinated",
+                metadata={
+                    "family": "coordinated-route-seed",
+                    "site_key": f"stage{stage}:route-seed",
+                    "stage": stage,
+                    "shottype_chara": shottype_chara,
+                    "character": shottype_chara // 2,
+                    "shot_type": shottype_chara % 2,
+                    "random_seed": seed_value,
+                    "random_seed_u16": seed_value & 0xFFFF,
+                    "coordination": ["header-route", "stage-seed"],
+                },
+                max_frames=max_frames,
+            )
+
+    for difficulty in selected_difficulties:
+        for seed_value in selected_seeds[: min(3, len(selected_seeds))]:
+            stage_payload = _stage_payload_from_bookmarks(
+                stage_data,
+                stage_data.input_bookmarks,
+                random_seed=seed_value,
+            )
+            payload = replace_replay_stage_payloads(seed_payload, {stage: stage_payload})
+            coordinated_payload = _rechecksum(
+                _replace_header_fields(
+                    deobfuscate_replay(payload),
+                    difficulty=difficulty,
+                )
+            )
+            _add_mutant(
+                mutants,
+                seen,
+                name=f"coordinated-difficulty-seed-d{difficulty}-s{seed_value & 0xFFFF:04x}",
+                payload=coordinated_payload,
+                stage=stage,
+                source="replay-coordinated",
+                metadata={
+                    "family": "coordinated-difficulty-seed",
+                    "site_key": f"stage{stage}:difficulty-seed",
+                    "stage": stage,
+                    "difficulty": difficulty,
+                    "random_seed": seed_value,
+                    "random_seed_u16": seed_value & 0xFFFF,
+                    "coordination": ["header-difficulty", "stage-seed"],
+                },
+                max_frames=max_frames,
+            )
+
+    neighbor_specs = [
+        (neighbor_stage, direction)
+        for neighbor_stage, direction in ((stage - 1, "prev"), (stage + 1, "next"))
+        if 1 <= neighbor_stage <= 7 and parsed[neighbor_stage - 1] is not None
+    ]
+    triad_seed_values = selected_seeds[: min(2, len(selected_seeds))]
+    triad_routes = selected_routes[:1]
+    for neighbor_stage, direction in neighbor_specs:
+        neighbor_data = parsed[neighbor_stage - 1]
+        if neighbor_data is None:
+            continue
+        for seed_value in selected_seeds[: min(3, len(selected_seeds))]:
+            borrowed_stage_payload = _stage_payload_from_bookmarks(
+                neighbor_data,
+                neighbor_data.input_bookmarks,
+                random_seed=seed_value,
+            )
+            payload = replace_replay_stage_payloads(seed_payload, {stage: borrowed_stage_payload})
+            _add_mutant(
+                mutants,
+                seen,
+                name=f"coordinated-borrow-seed-{direction}-s{neighbor_stage}-s{seed_value & 0xFFFF:04x}",
+                payload=payload,
+                stage=stage,
+                source="replay-coordinated",
+                metadata={
+                    "family": "coordinated-borrow-seed",
+                    "site_key": f"stage{stage}:borrow-seed",
+                    "stage": stage,
+                    "borrowed_stage": neighbor_stage,
+                    "direction": direction,
+                    "random_seed": seed_value,
+                    "random_seed_u16": seed_value & 0xFFFF,
+                    "coordination": ["stage-payload-borrow", "stage-seed"],
+                },
+                max_frames=max_frames,
+            )
+        for shottype_chara in triad_routes:
+            for seed_value in triad_seed_values:
+                borrowed_stage_payload = _stage_payload_from_bookmarks(
+                    neighbor_data,
+                    neighbor_data.input_bookmarks,
+                    random_seed=seed_value,
+                )
+                payload = replace_replay_stage_payloads(seed_payload, {stage: borrowed_stage_payload})
+                coordinated_payload = _rechecksum(
+                    _replace_header_fields(
+                        deobfuscate_replay(payload),
+                        shottype_chara=shottype_chara,
+                    )
+                )
+                _add_mutant(
+                    mutants,
+                    seen,
+                    name=(
+                        f"coordinated-borrow-route-seed-{direction}-s{neighbor_stage}"
+                        f"-r{shottype_chara}-s{seed_value & 0xFFFF:04x}"
+                    ),
+                    payload=coordinated_payload,
+                    stage=stage,
+                    source="replay-coordinated",
+                    metadata={
+                        "family": "coordinated-borrow-route-seed",
+                        "site_key": f"stage{stage}:borrow-route-seed",
+                        "stage": stage,
+                        "borrowed_stage": neighbor_stage,
+                        "direction": direction,
+                        "shottype_chara": shottype_chara,
+                        "character": shottype_chara // 2,
+                        "shot_type": shottype_chara % 2,
+                        "random_seed": seed_value,
+                        "random_seed_u16": seed_value & 0xFFFF,
+                        "coordination": ["stage-payload-borrow", "header-route", "stage-seed"],
+                    },
+                    max_frames=max_frames,
+                )
     return mutants

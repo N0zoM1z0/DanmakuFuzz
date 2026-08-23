@@ -294,7 +294,12 @@ Replay mutation now has three profiles:
 - `native`: mutate replay-native fields such as header route/difficulty,
   stage RNG seed, compressed bookmark timing, and same-replay stage-payload
   borrowing;
-- `all`: combine both lanes, then apply the same diverse selection pass.
+- `coordinated`: mutate multiple replay-native sites together, currently
+  `header-route + stage-seed`, `header-difficulty + stage-seed`,
+  `stage-payload-borrow + stage-seed`, and
+  `stage-payload-borrow + header-route + stage-seed`;
+- `all`: combine `input + native`, then apply the same diverse selection pass;
+- `all-coordinated`: combine `coordinated + input + native`.
 
 For native replay fuzzing specifically:
 
@@ -305,6 +310,19 @@ PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_desync_campaign \
   --max-ticks 1800 \
   --mutant-profile native \
   --limit 6 \
+  --continue-after-hit \
+  --trace-compact-counts
+```
+
+For replay-native coordinated fuzzing specifically:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_desync_campaign \
+  --input artifacts/replay-corpus-public/th06/fairysvoice-th6-001.rpy \
+  --stage 4 \
+  --max-ticks 1800 \
+  --mutant-profile coordinated \
+  --limit 8 \
   --continue-after-hit \
   --trace-compact-counts
 ```
@@ -363,6 +381,40 @@ Rebuild it locally with:
 PYTHONPATH=src python3 -m danmakufuzz.corpus.fetch_public_replays \
   --manifest reference/corpus/replay/public/th06/manifest.json \
   --output-dir artifacts/replay-corpus-public/th06
+```
+
+Then a focused stage-seed sweep across the public corpus looks like:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_corpus_campaign \
+  --input-dir artifacts/replay-corpus-public/th06 \
+  --stage-filter 1 --stage-filter 2 --stage-filter 3 \
+  --stage-filter 4 --stage-filter 5 --stage-filter 6 --stage-filter 7 \
+  --max-ticks 1800 \
+  --mutant-profile native \
+  --name-filter stage-seed \
+  --limit 8 \
+  --continue-after-hit \
+  --trace-compact-counts \
+  --artifact-dir artifacts/replay-stage-seed-focus-v1
+```
+
+And a focused coordinated borrow/seed sweep looks like:
+
+```sh
+PYTHONPATH=src python3 -m danmakufuzz.semantic.replay_corpus_campaign \
+  --input artifacts/replay-corpus-public/th06/fairysvoice-th6-001.rpy \
+  --input artifacts/replay-corpus-public/th06/gensokyo-th6-801.rpy \
+  --input artifacts/replay-corpus-public/th06/gensokyo-th6-802.rpy \
+  --input artifacts/replay-corpus-public/th06/gensokyo-th6-804.rpy \
+  --stage-filter 4 \
+  --max-ticks 1800 \
+  --mutant-profile coordinated \
+  --name-filter coordinated-borrow \
+  --limit 8 \
+  --continue-after-hit \
+  --trace-compact-counts \
+  --artifact-dir artifacts/replay-coordinated-stage4-borrow-focus-v1
 ```
 
 ## Coordinated resource lane
